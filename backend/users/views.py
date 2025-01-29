@@ -63,9 +63,6 @@ def register_view(request):
 def login_view(request):
     try:
         logger.info(f"Received login request. Headers: {dict(request.headers)}")
-        data = request.body.decode('utf-8')
-        logger.info(f"Request body: {data}")
-        
         username = request.data.get('username')
         password = request.data.get('password')
         

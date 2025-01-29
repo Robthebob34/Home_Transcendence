@@ -64,11 +64,11 @@
         }
 
         button {
+            border-radius: 5px;
             background: transparent;
             color: #00ff88;
             border: 1px solid #00ff88;
             padding: 0.5rem 1rem;
-            border-radius: 5px;
             cursor: pointer;
             font-family: 'Orbitron', sans-serif;
             transition: all 0.3s ease;
@@ -83,6 +83,7 @@
         button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+            pointer-events: none;
         }
 
         .game-container {
@@ -91,6 +92,17 @@
             flex-direction: column;
             align-items: center;
             padding: 2rem;
+        }
+
+        .game-id-display {
+            color: #00ff88;
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            padding: 0.5rem 1rem;
+            border: 1px solid #00ff88;
+            border-radius: 5px;
+            background: rgba(0, 255, 136, 0.1);
+            display: none;
         }
 
         .score-container {
@@ -105,6 +117,7 @@
         .canvas-container {
             position: relative;
             margin: 2rem 0;
+            display: none;
         }
 
         #gameCanvas {
@@ -170,6 +183,7 @@
     </nav>
 
     <div class="game-container">
+        <div class="game-id-display" id="gameIdDisplay"></div>
         <div class="score-container">
             <div id="player1Score">0</div>
             <div id="player2Score">0</div>
@@ -183,53 +197,42 @@
         <div id="waitingMessage" class="loading-dots">Waiting for opponent</div>
         
         <div class="game-buttons">
-            <button id="createGameBtn">Create Game</button>
-            <button id="joinGameBtn">Join Game</button>
+            <button id="createGameBtn" disabled>Create Game</button>
+            <button id="joinGameBtn" disabled>Join Game</button>
         </div>
     </div>
 
+    <script src="/static/js/game.js"></script>
     <script>
-        // Check authentication on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            checkAuth();
-            setupGame();
-            updateUserInfo();
-        });
-
         async function checkAuth() {
             try {
-                const response = await fetch('/api/users/profile/', {
-                    method: 'GET',
-                    credentials: 'include'
-                });
-
-                if (!response.ok) {
-                    // If not authenticated, redirect to login page
+                const response = await fetch('/api/users/profile/');
+                if (response.ok) {
+                    const userData = await response.json();
+                    updateUserInfo(userData);
+                    // Initialize game only after successful auth
+                    window.game = new PongGame();
+                    return true;
+                } else {
                     window.location.href = '/login';
-                    return;
+                    return false;
                 }
-
-                const userData = await response.json();
-                localStorage.setItem('user', JSON.stringify(userData));
-                updateUserInfo();
             } catch (error) {
-                console.error('Auth check error:', error);
+                console.error('Auth check failed:', error);
                 window.location.href = '/login';
+                return false;
             }
         }
 
-        function updateUserInfo() {
-            const userData = JSON.parse(localStorage.getItem('user') || '{}');
-            const avatar = document.getElementById('userAvatar');
-            const username = document.getElementById('username');
-            
-            if (userData.username) {
-                avatar.textContent = userData.username.charAt(0).toUpperCase();
-                username.textContent = userData.username;
-            }
+        function updateUserInfo(userData) {
+            document.getElementById('username').textContent = userData.username;
+            document.getElementById('userAvatar').textContent = userData.username[0].toUpperCase();
         }
 
-        async function handleLogout() {
+        // Wait for DOM content to load, then check auth
+        document.addEventListener('DOMContentLoaded', checkAuth);
+
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
             try {
                 const response = await fetch('/api/users/logout/', {
                     method: 'POST',
@@ -249,70 +252,7 @@
             } catch (error) {
                 console.error('Logout error:', error);
             }
-        }
-
-        function setupGame() {
-            const createGameBtn = document.getElementById('createGameBtn');
-            const joinGameBtn = document.getElementById('joinGameBtn');
-            const logoutBtn = document.getElementById('logoutBtn');
-            const gameStatus = document.getElementById('gameStatus');
-            const waitingMessage = document.getElementById('waitingMessage');
-
-            // Set up WebSocket connection
-            const ws = new WebSocket(`ws://${window.location.host}/ws/game/`);
-
-            ws.onopen = () => {
-                console.log('WebSocket connected');
-                gameStatus.textContent = 'Connected to game server';
-                createGameBtn.disabled = false;
-                joinGameBtn.disabled = false;
-            };
-
-            ws.onclose = () => {
-                console.log('WebSocket disconnected');
-                gameStatus.textContent = 'Disconnected from game server';
-                createGameBtn.disabled = true;
-                joinGameBtn.disabled = true;
-            };
-
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                console.log('Received message:', data);
-                
-                switch (data.type) {
-                    case 'game_created':
-                        waitingMessage.style.display = 'block';
-                        createGameBtn.disabled = true;
-                        joinGameBtn.disabled = true;
-                        break;
-                    case 'game_joined':
-                        waitingMessage.style.display = 'none';
-                        gameStatus.textContent = 'Game starting...';
-                        break;
-                    case 'game_start':
-                        waitingMessage.style.display = 'none';
-                        gameStatus.textContent = 'Game in progress';
-                        startGame(data);
-                        break;
-                    case 'game_update':
-                        updateGame(data);
-                        break;
-                    case 'game_over':
-                        endGame(data);
-                        break;
-                }
-            };
-
-            createGameBtn.onclick = () => {
-                ws.send(JSON.stringify({ type: 'create_game' }));
-            };
-
-            joinGameBtn.onclick = () => {
-                ws.send(JSON.stringify({ type: 'join_game' }));
-            };
-
-            logoutBtn.onclick = handleLogout;
-        }
+        });
 
         function getCookie(name) {
             let cookieValue = null;
@@ -327,28 +267,6 @@
                 }
             }
             return cookieValue;
-        }
-
-        // Game logic functions
-        function startGame(data) {
-            // Initialize game state
-            console.log('Starting game:', data);
-        }
-
-        function updateGame(data) {
-            // Update game state (ball position, paddle positions, scores)
-            console.log('Updating game:', data);
-        }
-
-        function endGame(data) {
-            // Handle game over
-            console.log('Game over:', data);
-            const gameStatus = document.getElementById('gameStatus');
-            gameStatus.textContent = `Game Over! ${data.winner} wins!`;
-            
-            // Re-enable buttons
-            document.getElementById('createGameBtn').disabled = false;
-            document.getElementById('joinGameBtn').disabled = false;
         }
     </script>
 </body>

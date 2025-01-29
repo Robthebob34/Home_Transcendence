@@ -4,9 +4,10 @@ from django.conf import settings
 # Create your models here.
 
 class Game(models.Model):
-    GAME_STATUS = (
+    GAME_STATUS_CHOICES = (
         ('waiting', 'Waiting for Player'),
         ('playing', 'Game in Progress'),
+        ('paused', 'Game Paused'),
         ('finished', 'Game Finished'),
     )
 
@@ -24,7 +25,7 @@ class Game(models.Model):
     )
     status = models.CharField(
         max_length=20,
-        choices=GAME_STATUS,
+        choices=GAME_STATUS_CHOICES,
         default='waiting'
     )
     score_player1 = models.IntegerField(default=0)
