@@ -105,26 +105,34 @@
             display: none;
         }
 
-        .score-container {
-            display: flex;
-            justify-content: center;
-            gap: 4rem;
-            margin-bottom: 2rem;
-            font-size: 2rem;
-            color: #00ff88;
-        }
-
         .canvas-container {
             position: relative;
-            margin: 2rem 0;
+            margin: 2rem auto;
+            width: 800px;
+            height: 600px;
             display: none;
         }
-
+        
         #gameCanvas {
             background-color: rgba(0, 0, 0, 0.3);
             border: 2px solid #00ff88;
             border-radius: 10px;
             box-shadow: 0 0 30px rgba(0, 255, 136, 0.2);
+            width: 100%;
+            height: 100%;
+        }
+        
+        .score-container {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 4rem;
+            font-size: 2rem;
+            color: #00ff88;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
         }
 
         .game-buttons {
@@ -176,49 +184,74 @@
         <div class="nav-buttons">
             <div class="user-info">
                 <div class="user-avatar" id="userAvatar"></div>
-                <span class="username" id="username"></span>
+                <span id="username"></span>
             </div>
-            <button id="logoutBtn">Logout</button>
+            <button id="logoutBtn" class="btn">Logout</button>
         </div>
     </nav>
 
     <div class="game-container">
-        <div class="game-id-display" id="gameIdDisplay"></div>
-        <div class="score-container">
-            <div id="player1Score">0</div>
-            <div id="player2Score">0</div>
-        </div>
-        
-        <div class="canvas-container">
-            <canvas id="gameCanvas" width="800" height="400"></canvas>
-        </div>
-
-        <div class="game-status" id="gameStatus"></div>
-        <div id="waitingMessage" class="loading-dots">Waiting for opponent</div>
-        
         <div class="game-buttons">
-            <button id="createGameBtn" disabled>Create Game</button>
-            <button id="joinGameBtn" disabled>Join Game</button>
+            <button id="createGameBtn" class="btn">Create Game</button>
+            <button id="joinGameBtn" class="btn">Join Game</button>
+        </div>
+        
+        <div id="gameStatus" class="game-status"></div>
+        
+        <div id="gameCanvasContainer" class="canvas-container">
+            <div class="score-container">
+                <div id="player1Score">0</div>
+                <div id="player2Score">0</div>
+            </div>
+            <canvas id="gameCanvas"></canvas>
         </div>
     </div>
 
     <script src="/static/js/game.js"></script>
     <script>
+        let game = null;
+        let gameInitialized = false;
+
+        function initializeGame() {
+            if (gameInitialized) {
+                console.log('Game already initialized, skipping...');
+                return;
+            }
+            
+            console.log('Initializing game instance...');
+            try {
+                game = new PongGame();
+                gameInitialized = true;
+                console.log('Game instance created successfully');
+            } catch (error) {
+                console.error('Failed to initialize game:', error);
+                gameInitialized = false;
+            }
+        }
+
         async function checkAuth() {
             try {
                 const response = await fetch('/api/users/profile/');
                 if (response.ok) {
                     const userData = await response.json();
                     updateUserInfo(userData);
-                    // Initialize game only after successful auth
-                    window.game = new PongGame();
+                    
+                    // Initialize game after successful auth and ensure DOM is ready
+                    if (!gameInitialized && document.readyState === 'complete') {
+                        console.log('DOM is ready, initializing game after auth');
+                        initializeGame();
+                    } else if (!gameInitialized) {
+                        console.log('Waiting for DOM to be ready...');
+                        window.addEventListener('load', initializeGame);
+                    }
+                    
                     return true;
                 } else {
                     window.location.href = '/login';
                     return false;
                 }
             } catch (error) {
-                console.error('Auth check failed:', error);
+                console.error('Error checking auth:', error);
                 window.location.href = '/login';
                 return false;
             }
@@ -230,27 +263,26 @@
         }
 
         // Wait for DOM content to load, then check auth
-        document.addEventListener('DOMContentLoaded', checkAuth);
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', checkAuth);
+        } else {
+            checkAuth();
+        }
 
         document.getElementById('logoutBtn').addEventListener('click', async () => {
             try {
                 const response = await fetch('/api/users/logout/', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
                         'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    credentials: 'include'
+                    }
                 });
-
+                
                 if (response.ok) {
-                    localStorage.removeItem('user');
                     window.location.href = '/login';
-                } else {
-                    console.error('Logout failed');
                 }
             } catch (error) {
-                console.error('Logout error:', error);
+                console.error('Error logging out:', error);
             }
         });
 

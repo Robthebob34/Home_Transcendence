@@ -1,220 +1,302 @@
 class PongGame {
     constructor() {
+        console.log('Waiting for DOM to be ready...');
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this.init());
+        } else {
+            this.init();
+        }
+    }
+
+    async init() {
+        console.log('Initializing game...');
+        try {
+            const valid = await this.checkSession();
+            if (!valid) {
+                console.error('Invalid session, redirecting to login...');
+                window.location.href = '/login';
+                return;
+            }
+            
+            // Initialize in correct order
+            this.initializeElements();
+            this.initializeGameState();
+            this.initializeEventListeners();
+            this.setupWebSocket();
+            
+            console.log('Game initialization complete');
+        } catch (error) {
+            console.error('Error during initialization:', error);
+        }
+    }
+
+    async checkSession() {
+        try {
+            const response = await fetch('/api/users/profile/', {
+                credentials: 'include',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                }
+            });
+            
+            if (!response.ok) {
+                console.error('Session check failed:', response.status);
+                return false;
+            }
+            
+            const userData = await response.json();
+            console.log('Session valid for user:', userData.username);
+            
+            // Store the current user's info
+            this.currentUser = userData;
+            
+            // Update UI with user info
+            const usernameElement = document.getElementById('username');
+            const userAvatarElement = document.getElementById('userAvatar');
+            
+            if (usernameElement) {
+                usernameElement.textContent = userData.username;
+            }
+            if (userAvatarElement) {
+                userAvatarElement.textContent = userData.username[0].toUpperCase();
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('Error checking session:', error);
+            return false;
+        }
+    }
+    
+    initializeElements() {
+        console.log('Initializing game elements...');
+        
+        // Get DOM elements
         this.canvas = document.getElementById('gameCanvas');
+        this.canvasContainer = document.getElementById('gameCanvasContainer');
+        this.createGameBtn = document.getElementById('createGameBtn');
+        this.joinGameBtn = document.getElementById('joinGameBtn');
+        this.gameStatus = document.getElementById('gameStatus');
+        this.player1Score = document.getElementById('player1Score');
+        this.player2Score = document.getElementById('player2Score');
+        
+        // Verify all elements exist
+        const elements = {
+            canvas: this.canvas,
+            canvasContainer: this.canvasContainer,
+            createGameBtn: this.createGameBtn,
+            joinGameBtn: this.joinGameBtn,
+            gameStatus: this.gameStatus,
+            player1Score: this.player1Score,
+            player2Score: this.player2Score
+        };
+        
+        for (const [name, element] of Object.entries(elements)) {
+            if (!element) {
+                throw new Error(`Required element not found: ${name}`);
+            }
+        }
+        
+        // Initialize canvas
         this.ctx = this.canvas.getContext('2d');
-        this.gameSocket = null;
+        if (!this.ctx) {
+            throw new Error('Could not get canvas context');
+        }
+        
+        // Set initial canvas size
+        this.canvas.width = 800;
+        this.canvas.height = 600;
+        
+        console.log('Game elements initialized successfully');
+    }
+    
+    initializeGameState() {
+        // Game state
+        this.gameStarted = false;
         this.gameId = null;
         this.playerId = null;
         this.connected = false;
-        this.connectionAttempt = false;
-        this.reconnectTimeout = null;
-        this.maxReconnectAttempts = 5;
-        this.reconnectAttempts = 0;
-        
-        // Game state
-        this.ball = { x: 400, y: 200, dx: 5, dy: 5, radius: 8 };
-        this.paddles = {
-            left: { x: 50, y: 150, width: 10, height: 100 },
-            right: { x: 740, y: 150, width: 10, height: 100 }
-        };
+        this.gameSocket = null;
         this.score = { left: 0, right: 0 };
         
-        // Visual settings
-        this.colors = {
-            background: 'rgba(0, 0, 0, 0.3)',
-            ball: '#00ff88',
-            paddle: '#ffffff',
-            centerLine: 'rgba(255, 255, 255, 0.2)',
-            score: '#00ff88',
-            glow: '0 0 10px rgba(0, 255, 136, 0.5)'
+        // Initial game objects
+        this.ball = { x: 400, y: 300, dx: 5, dy: 5, radius: 10 };
+        this.paddles = {
+            left: { x: 50, y: 250, width: 20, height: 100 },
+            right: { x: 730, y: 250, width: 20, height: 100 }
         };
-
-        // Get button elements
-        this.createGameBtn = document.getElementById('createGameBtn');
-        this.joinGameBtn = document.getElementById('joinGameBtn');
+        
+        // Hide canvas initially
+        if (this.canvasContainer) {
+            this.canvasContainer.style.display = 'none';
+        }
+        
+        console.log('Game state initialized');
+    }
+    
+    initializeEventListeners() {
+        // Disable buttons initially
+        this.createGameBtn.disabled = true;
+        this.joinGameBtn.disabled = true;
         
         // Bind event listeners
         this.createGameBtn.addEventListener('click', () => this.startGame());
         this.joinGameBtn.addEventListener('click', () => this.joinGame());
         window.addEventListener('keydown', (e) => this.handleKeyPress(e));
         
-        // Disable buttons initially
-        this.createGameBtn.disabled = true;
-        this.joinGameBtn.disabled = true;
-        
-        // Initialize WebSocket
-        this.setupWebSocket();
+        console.log('Event listeners initialized');
+    }
+    
+    showCanvas() {
+        try {
+            console.log('Attempting to show canvas container...');
+            const container = document.getElementById('gameCanvasContainer');
+            
+            if (!container) {
+                throw new Error('Canvas container element not found');
+            }
+            
+            // Update the instance variable
+            this.canvasContainer = container;
+            this.canvasContainer.style.display = 'block';
+            
+            console.log('Canvas container shown successfully');
+            
+            // Force a redraw
+            if (this.ctx) {
+                this.draw();
+            }
+        } catch (error) {
+            console.error('Error showing canvas:', error);
+            throw error; // Re-throw to handle it in the caller
+        }
+    }
+    
+    hideCanvas() {
+        try {
+            console.log('Attempting to hide canvas container...');
+            const container = document.getElementById('gameCanvasContainer');
+            
+            if (!container) {
+                throw new Error('Canvas container element not found');
+            }
+            
+            // Update the instance variable
+            this.canvasContainer = container;
+            this.canvasContainer.style.display = 'none';
+            
+            console.log('Canvas container hidden successfully');
+        } catch (error) {
+            console.error('Error hiding canvas:', error);
+            throw error; // Re-throw to handle it in the caller
+        }
     }
     
     setupWebSocket() {
-        if (this.connectionAttempt || this.connected) {
-            console.log('Already connected or attempting to connect');
-            return;
+        if (this.gameSocket) {
+            console.log('WebSocket already exists, closing previous connection...');
+            this.gameSocket.close();
         }
 
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.log('Max reconnection attempts reached');
-            alert('Unable to connect to game server. Please refresh the page.');
-            return;
-        }
+        console.log('Setting up WebSocket connection...');
+        const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const wsUrl = `${wsScheme}://${window.location.host}/ws/game/`;
         
-        try {
-            this.connectionAttempt = true;
-            console.log('Setting up new WebSocket connection...');
-            
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${wsProtocol}//${window.location.host}/ws/game/`;
-            
-            if (this.gameSocket) {
-                console.log('Closing existing WebSocket connection');
-                this.gameSocket.close();
-                this.gameSocket = null;
-            }
-            
-            this.gameSocket = new WebSocket(wsUrl);
-            
-            this.gameSocket.onopen = () => {
-                console.log('WebSocket connection opened - waiting for server confirmation');
-            };
-            
-            this.gameSocket.onmessage = (event) => {
-                this.handleWebSocketMessage(event);
-            };
-            
-            this.gameSocket.onclose = () => {
-                console.log('WebSocket connection closed');
-                this.connected = false;
-                this.connectionAttempt = false;
-                this.createGameBtn.disabled = true;
-                this.joinGameBtn.disabled = true;
-                
-                if (!this.gameId && this.reconnectAttempts < this.maxReconnectAttempts) {
-                    this.reconnectAttempts++;
-                    console.log(`Reconnection attempt ${this.reconnectAttempts} of ${this.maxReconnectAttempts}`);
-                    
-                    if (this.reconnectTimeout) {
-                        clearTimeout(this.reconnectTimeout);
-                    }
-                    
-                    this.reconnectTimeout = setTimeout(() => {
-                        if (!this.connected && !this.connectionAttempt) {
-                            this.setupWebSocket();
-                        }
-                    }, 5000);
-                }
-            };
-            
-            this.gameSocket.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                this.connected = false;
-                this.connectionAttempt = false;
-                this.createGameBtn.disabled = true;
-                this.joinGameBtn.disabled = true;
-            };
-        } catch (error) {
-            console.error('Error setting up WebSocket:', error);
-            this.connected = false;
+        console.log('Attempting to connect to:', wsUrl);
+        this.gameSocket = new WebSocket(wsUrl);
+        
+        this.gameSocket.onopen = () => {
+            console.log('WebSocket connection established successfully');
+            this.connected = true;
             this.connectionAttempt = false;
-            this.createGameBtn.disabled = true;
-            this.joinGameBtn.disabled = true;
+            
+            // Send user info after connection
+            if (this.currentUser) {
+                this.gameSocket.send(JSON.stringify({
+                    type: 'user_connected',
+                    user_id: this.currentUser.id,
+                    username: this.currentUser.username
+                }));
+            }
+        };
+        
+        this.gameSocket.onmessage = this.handleWebSocketMessage.bind(this);
+        this.gameSocket.onclose = this.handleWebSocketClose.bind(this);
+        this.gameSocket.onerror = this.handleWebSocketError.bind(this);
+    }
+    
+    handleWebSocketOpen() {
+        console.log('WebSocket connection established successfully');
+    }
+    
+    handleWebSocketClose(event) {
+        console.log('WebSocket connection closed:', event);
+        this.connected = false;
+        
+        if (!this.connectionAttempt && this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+            this.reconnectTimeout = setTimeout(() => {
+                this.setupWebSocket();
+            }, 3000);
         }
     }
     
-    startGame() {
-        if (!this.connected || !this.gameSocket) {
-            console.error('Cannot create game: WebSocket not connected');
-            return;
-        }
-        
-        console.log('Creating new game...');
-        this.createGameBtn.disabled = true;
-        this.joinGameBtn.disabled = true;
-        
-        this.gameSocket.send(JSON.stringify({
-            type: 'create_game'
-        }));
+    handleWebSocketError(error) {
+        console.error('WebSocket error:', error);
     }
-
-    joinGame() {
-        if (!this.connected || !this.gameSocket) {
-            console.error('Cannot join game: WebSocket not connected');
-            return;
-        }
-        
-        const gameId = prompt('Enter game ID:');
-        if (!gameId) {
-            console.log('Game ID not provided');
-            return;
-        }
-        
-        console.log(`Joining game ${gameId}...`);
-        this.createGameBtn.disabled = true;
-        this.joinGameBtn.disabled = true;
-        
-        this.gameSocket.send(JSON.stringify({
-            type: 'join_game',
-            game_id: gameId
-        }));
-    }
-
+    
     handleWebSocketMessage(event) {
         try {
+            console.log('Received message:', event.data);
             const data = JSON.parse(event.data);
-            console.log('Received message:', data);
-
+            
             switch (data.type) {
                 case 'connection_established':
-                    console.log('Connection established message received');
+                    console.log('Connected to game server');
                     this.connected = true;
-                    this.connectionAttempt = false;
-                    this.reconnectAttempts = 0;
-                    
-                    // Clear any pending reconnect timeout
-                    if (this.reconnectTimeout) {
-                        clearTimeout(this.reconnectTimeout);
-                        this.reconnectTimeout = null;
-                    }
-                    
-                    // Only enable buttons if we're not in a game
-                    if (!this.gameId) {
-                        console.log('Enabling game buttons');
-                        this.createGameBtn.disabled = false;
-                        this.joinGameBtn.disabled = false;
-                    }
+                    this.playerId = data.user.id;
                     break;
 
                 case 'game_created':
-                    console.log('Game created:', data);
+                    console.log('Game created:', data.game_id);
                     this.gameId = data.game_id;
-                    this.playerId = data.player_id;
-                    
-                    // Display the game ID
-                    const gameIdDisplay = document.getElementById('gameIdDisplay');
-                    if (gameIdDisplay) {
-                        gameIdDisplay.textContent = `Game ID: ${this.gameId}`;
-                        gameIdDisplay.style.display = 'block';
+                    if (this.gameStatus) {
+                        this.gameStatus.textContent = 'Waiting for opponent...';
                     }
                     break;
 
                 case 'game_joined':
-                    console.log('Game joined:', data);
-                    this.gameId = data.game_id;
-                    this.playerId = data.player_id;
+                    console.log('Game joined');
+                    this.gameStarted = true;
+                    if (this.canvasContainer) {
+                        this.canvasContainer.style.display = 'block';
+                    }
+                    if (this.gameStatus) {
+                        this.gameStatus.textContent = 'Game starting...';
+                    }
                     break;
 
-                case 'game_state':
-                    this.updateGameState(data.game_state);
+                case 'game_state_update':
+                    if (!this.gameStarted) {
+                        this.gameStarted = true;
+                        if (this.canvasContainer) {
+                            this.canvasContainer.style.display = 'block';
+                        }
+                    }
+                    if (data.game_state) {
+                        this.updateGameState(data.game_state);
+                    }
+                    break;
+
+                case 'game_over':
+                    this.handleGameOver(data);
                     break;
 
                 case 'error':
-                    console.error('Error from server:', data.message);
-                    alert(data.message);
-                    
-                    // Re-enable buttons on error if not in a game
-                    if (!this.gameId && this.connected) {
-                        console.log('Re-enabling buttons after error');
-                        this.createGameBtn.disabled = false;
-                        this.joinGameBtn.disabled = false;
+                    console.error('Game error:', data.message);
+                    if (this.gameStatus) {
+                        this.gameStatus.textContent = `Error: ${data.message}`;
                     }
                     break;
 
@@ -226,63 +308,96 @@ class PongGame {
         }
     }
     
+    startGame() {
+        if (!this.connected) {
+            console.error('Not connected to game server');
+            return;
+        }
+        
+        if (this.gameId) {
+            console.log('Game already created, skipping...');
+            return;
+        }
+        
+        console.log('Starting new game...');
+        this.createGameBtn.disabled = true;
+        this.joinGameBtn.disabled = true;
+        
+        this.gameSocket.send(JSON.stringify({
+            type: 'create_game'
+        }));
+    }
+    
+    joinGame() {
+        if (!this.connected) {
+            console.error('Not connected to game server');
+            return;
+        }
+        
+        console.log('Attempting to join game...');
+        if (this.createGameBtn) this.createGameBtn.disabled = true;
+        if (this.joinGameBtn) this.joinGameBtn.disabled = true;
+        
+        this.gameSocket.send(JSON.stringify({
+            type: 'join_game'
+        }));
+    }
+
     handleKeyPress(event) {
-        if (!this.gameSocket || this.gameSocket.readyState !== WebSocket.OPEN) return;
+        if (!this.gameSocket || this.gameSocket.readyState !== WebSocket.OPEN || !this.gameId) return;
         
         let direction = null;
         if (event.key === 'ArrowUp') direction = 'up';
         if (event.key === 'ArrowDown') direction = 'down';
         
         if (direction) {
+            console.log('Sending paddle move:', direction);
             this.gameSocket.send(JSON.stringify({
                 type: 'paddle_move',
-                direction: direction,
-                game_id: this.gameId,
-                player_id: this.playerId
+                direction: direction
             }));
         }
     }
     
-    updateGameState(state) {
-        // Update game elements
-        this.ball = state.ball;
-        this.paddles = state.paddles;
-        this.score = state.score;
-        
-        // Draw the game state
+    animate() {
+        if (!this.gameStarted) {
+            console.log('Game not started, waiting...');
+        }
+        // Draw the current game state
         this.draw();
+        // Continue the animation loop
+        requestAnimationFrame(this.animate);
     }
     
     draw() {
-        // Clear canvas
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        if (!this.ctx || !this.gameStarted) return;
         
-        // Draw background
-        this.ctx.fillStyle = this.colors.background;
+        // Clear canvas
+        this.ctx.fillStyle = '#000000';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
         // Draw center line
-        this.ctx.setLineDash([10, 10]);
+        this.ctx.setLineDash([5, 15]);
         this.ctx.beginPath();
         this.ctx.moveTo(this.canvas.width / 2, 0);
         this.ctx.lineTo(this.canvas.width / 2, this.canvas.height);
-        this.ctx.strokeStyle = this.colors.centerLine;
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
         this.ctx.stroke();
         this.ctx.setLineDash([]);
         
-        // Draw ball with glow effect
+        // Draw ball
         this.ctx.beginPath();
         this.ctx.arc(this.ball.x, this.ball.y, this.ball.radius, 0, Math.PI * 2);
-        this.ctx.fillStyle = this.colors.ball;
-        this.ctx.shadowColor = this.colors.ball;
+        this.ctx.fillStyle = '#00ff88';
+        this.ctx.shadowColor = '#00ff88';
         this.ctx.shadowBlur = 15;
         this.ctx.fill();
         this.ctx.shadowBlur = 0;
         
-        // Draw paddles with slight glow
-        this.ctx.shadowColor = this.colors.paddle;
+        // Draw paddles
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.shadowColor = '#ffffff';
         this.ctx.shadowBlur = 10;
-        this.ctx.fillStyle = this.colors.paddle;
         
         // Left paddle
         this.ctx.fillRect(
@@ -301,16 +416,29 @@ class PongGame {
         );
         
         this.ctx.shadowBlur = 0;
+    }
+    
+    updateGameState(state) {
+        if (!state) return;
         
-        // Update score display
-        document.getElementById('player1Score').textContent = this.score.left;
-        document.getElementById('player2Score').textContent = this.score.right;
+        // Update ball position
+        if (state.ball) {
+            this.ball = state.ball;
+        }
+        
+        // Update paddle positions
+        if (state.paddles) {
+            this.paddles = state.paddles;
+        }
+        
+        // Update score
+        if (state.score) {
+            this.score = state.score;
+            if (this.player1Score) this.player1Score.textContent = state.score.left;
+            if (this.player2Score) this.player2Score.textContent = state.score.right;
+        }
     }
-    
-    startGameLoop() {
-        this.draw();
-    }
-    
+
     handleGameOver(data) {
         const winner = data.winner === this.playerId ? 'You won!' : 'You lost!';
         alert(`Game Over! ${winner}`);

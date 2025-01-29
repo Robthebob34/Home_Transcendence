@@ -100,39 +100,58 @@ def login_view(request):
         logger.info(f"Authentication result for {username}: {'success' if user else 'failed'}")
 
         if user is not None:
-            if user.is_active:
-                login(request, user)
-                serializer = UserSerializer(user)
-                response_data = serializer.data
-                response = Response(response_data)
-                csrf_token = get_token(request)
-                response['X-CSRFToken'] = csrf_token
-                logger.info(f"User {username} logged in successfully. CSRF Token: {csrf_token}")
-                return response
-            else:
-                logger.warning(f"User {username} account is disabled")
-                return Response({
-                    'detail': 'User account is disabled'
-                }, status=status.HTTP_403_FORBIDDEN)
+            # Clear any existing sessions for this user
+            logger.info(f"Clearing existing sessions for user {username}")
+            request.session.flush()
+            
+            # Create new session
+            login(request, user)
+            logger.info(f"New session created for user {username}")
+            
+            # Set session expiry
+            request.session.set_expiry(1209600)  # 2 weeks
+            
+            return Response({
+                'detail': 'Login successful',
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'display_name': user.display_name,
+                }
+            }, status=status.HTTP_200_OK)
         else:
-            logger.warning(f"Invalid login attempt for user: {username}")
+            logger.warning(f"Invalid credentials for user {username}")
             return Response({
                 'detail': 'Invalid credentials'
             }, status=status.HTTP_401_UNAUTHORIZED)
+
     except Exception as e:
-        logger.error(f"Unexpected error in login_view: {str(e)}", exc_info=True)
+        logger.error(f"Login error: {str(e)}")
         return Response({
-            'detail': str(e)
+            'detail': 'An error occurred during login'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def logout_view(request):
-    logout(request)
-    return Response({'detail': 'Successfully logged out'})
+    try:
+        username = request.user.username
+        logger.info(f"Logout request for user: {username}")
+        
+        # Clear the session
+        request.session.flush()
+        logout(request)
+        
+        logger.info(f"User {username} logged out successfully")
+        return Response({'detail': 'Logout successful'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Logout error: {str(e)}")
+        return Response({'detail': 'An error occurred during logout'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def profile_view(request):
+    logger.info(f"Profile view request for user: {request.user.username}")
     serializer = UserSerializer(request.user)
     return Response(serializer.data)
 

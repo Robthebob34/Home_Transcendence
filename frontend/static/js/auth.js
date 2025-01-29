@@ -3,7 +3,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Setting up authentication handlers...');
     setupAuthHandlers();
-    checkInitialState();
     checkAuthStatus();
 });
 
@@ -101,13 +100,17 @@ function updateUIForAuthenticatedUser(user) {
             <span>Welcome, ${user.username}!</span>
             <button onclick="handleLogout()">Logout</button>
         `;
-        userInfo.style.display = 'block';
     }
 }
 
 async function handleLogout() {
     try {
         const csrfToken = await getCSRFToken();
+        if (!csrfToken) {
+            console.error('Failed to get CSRF token for logout');
+            return;
+        }
+
         const response = await fetch('/api/users/logout/', {
             method: 'POST',
             headers: {
@@ -123,49 +126,46 @@ async function handleLogout() {
             console.error('Logout failed');
         }
     } catch (error) {
-        console.error('Logout error:', error);
+        console.error('Error during logout:', error);
     }
 }
 
 async function checkAuthStatus() {
+    console.log('Checking authentication status...');
+    
+    // Check if we're on the login page
+    const isLoginPage = window.location.pathname === '/login';
+    
     try {
         const response = await fetch('/api/users/profile/', {
             credentials: 'include'
         });
-
+        
         if (response.ok) {
             const user = await response.json();
             localStorage.setItem('user', JSON.stringify(user));
-            updateUIForAuthenticatedUser(user);
             
-            // If we're on the login page and already authenticated, redirect to game
-            if (window.location.pathname === '/login') {
+            // If authenticated and on login page, redirect to game
+            if (isLoginPage) {
                 window.location.href = '/game';
+                return;
             }
+            
+            updateUIForAuthenticatedUser(user);
         } else {
             localStorage.removeItem('user');
-            updateUIForAnonymousUser();
             
-            // If we're on a protected page and not authenticated, redirect to login
-            if (window.location.pathname === '/game') {
+            // If not authenticated and not on login page, redirect to login
+            if (!isLoginPage) {
                 window.location.href = '/login';
             }
         }
     } catch (error) {
-        console.error('Auth check error:', error);
-        localStorage.removeItem('user');
-        updateUIForAnonymousUser();
+        console.error('Error checking auth status:', error);
+        if (!isLoginPage) {
+            window.location.href = '/login';
+        }
     }
-}
-
-function updateUIForAnonymousUser() {
-    const loginBtn = document.getElementById('loginBtn');
-    const registerBtn = document.getElementById('registerBtn');
-    const userInfo = document.getElementById('userInfo');
-    
-    if (loginBtn) loginBtn.style.display = 'block';
-    if (registerBtn) registerBtn.style.display = 'block';
-    if (userInfo) userInfo.style.display = 'none';
 }
 
 function getCookie(name) {
@@ -181,20 +181,4 @@ function getCookie(name) {
         }
     }
     return cookieValue;
-}
-
-function checkInitialState() {
-    const user = localStorage.getItem('user');
-    if (user) {
-        try {
-            const userData = JSON.parse(user);
-            updateUIForAuthenticatedUser(userData);
-        } catch (error) {
-            console.error('Error parsing user data:', error);
-            localStorage.removeItem('user');
-            updateUIForAnonymousUser();
-        }
-    } else {
-        updateUIForAnonymousUser();
-    }
 }

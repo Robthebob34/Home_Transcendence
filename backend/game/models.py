@@ -70,14 +70,3 @@ class Game(models.Model):
                 'score': self.score_player2
             } if self.player2 else None
         }
-
-class Tournament(models.Model):
-    name = models.CharField(max_length=100)
-    players = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='tournaments')
-    games = models.ManyToManyField(Game, related_name='tournament')
-    created_at = models.DateTimeField(auto_now_add=True)
-    winner = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='tournaments_won', on_delete=models.SET_NULL, null=True, blank=True)
-    is_active = models.BooleanField(default=True)
-
-    def __str__(self):
-        return self.name

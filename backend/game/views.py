@@ -3,8 +3,8 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from .models import Game, Tournament
-from .serializers import GameSerializer, GameDetailSerializer, TournamentSerializer
+from .models import Game
+from .serializers import GameSerializer, GameDetailSerializer
 from django.utils import timezone
 from django.db.models import Q
 
@@ -40,35 +40,6 @@ def join_game(request, game_id):
     except Game.DoesNotExist:
         return Response({'error': 'Game not found'}, status=status.HTTP_404_NOT_FOUND)
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def create_tournament(request):
-    name = request.data.get('name')
-    if not name:
-        return Response({'error': 'Tournament name is required'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    tournament = Tournament.objects.create(name=name)
-    tournament.players.add(request.user)
-    return Response(TournamentSerializer(tournament).data)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def join_tournament(request, tournament_id):
-    try:
-        tournament = Tournament.objects.get(id=tournament_id, is_active=True)
-        if request.user not in tournament.players.all():
-            tournament.players.add(request.user)
-            return Response(TournamentSerializer(tournament).data)
-        return Response({'error': 'Already in tournament'}, status=status.HTTP_400_BAD_REQUEST)
-    except Tournament.DoesNotExist:
-        return Response({'error': 'Tournament not found'}, status=status.HTTP_404_NOT_FOUND)
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def active_games(request):
-    games = Game.objects.filter(status='in_progress')
-    return Response(GameSerializer(games, many=True).data)
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def user_games(request):
@@ -76,12 +47,6 @@ def user_games(request):
         Q(player1=request.user) | Q(player2=request.user)
     ).order_by('-created_at')
     return Response(GameSerializer(games, many=True).data)
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def active_tournaments(request):
-    tournaments = Tournament.objects.filter(is_active=True)
-    return Response(TournamentSerializer(tournaments, many=True).data)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

@@ -23,6 +23,51 @@ class GameConsumer(AsyncWebsocketConsumer):
         self.user_group = None
         self.is_connected = False
 
+    @property
+    def game_state(self):
+        if not hasattr(self, '_game_state'):
+            logger.info("Initializing new game state")
+            canvas_width = 800
+            canvas_height = 600
+            paddle_width = 20
+            paddle_height = 100
+            ball_radius = 10
+            
+            self._game_state = {
+                'canvas': {
+                    'width': canvas_width,
+                    'height': canvas_height
+                },
+                'ball': {
+                    'x': canvas_width // 2,
+                    'y': canvas_height // 2,
+                    'dx': 5,
+                    'dy': 5,
+                    'radius': ball_radius
+                },
+                'paddles': {
+                    'player1': {
+                        'x': 50,
+                        'y': (canvas_height - paddle_height) // 2,
+                        'width': paddle_width,
+                        'height': paddle_height
+                    },
+                    'player2': {
+                        'x': canvas_width - 50 - paddle_width,
+                        'y': (canvas_height - paddle_height) // 2,
+                        'width': paddle_width,
+                        'height': paddle_height
+                    }
+                },
+                'score': {
+                    'player1': 0,
+                    'player2': 0
+                },
+                'paddle_speed': 10
+            }
+            logger.info(f"Initial game state: {self._game_state}")
+        return self._game_state
+
     async def connect(self):
         """
         Called when a WebSocket connection is established
@@ -33,6 +78,8 @@ class GameConsumer(AsyncWebsocketConsumer):
                 return
 
             self.user = self.scope["user"]
+            self.user_id = self.user.id
+            self.username = self.user.username
             self.is_connected = True
             self.game = None
             self.user_group = f"user_{self.user.id}"
@@ -43,7 +90,11 @@ class GameConsumer(AsyncWebsocketConsumer):
             # Then send the message
             await self.send_json({
                 'type': 'connection_established',
-                'message': 'Connected successfully'
+                'message': 'Connected successfully',
+                'user': {
+                    'id': self.user_id,
+                    'username': self.username
+                }
             })
             
             logger.info(f"User {self.user.username} connected successfully")
@@ -60,16 +111,23 @@ class GameConsumer(AsyncWebsocketConsumer):
             if not text_data:
                 return
                 
-            logger.info(f"Received text data: {text_data}")
+            logger.info(f"Received text data from {self.user.username}: {text_data}")
             data = json.loads(text_data)
             message_type = data.get('type')
             
+            # Validate user session
+            if self.scope["user"].is_anonymous:
+                await self.send_json({
+                    'type': 'error',
+                    'message': 'Invalid session'
+                })
+                await self.close()
+                return
+
             if message_type == 'create_game':
-                # Create a new game
                 try:
                     game = await self.create_game()
                     if game:
-                        # Join game channel
                         self.game = game
                         self.channel_group_name = f"game_{game.id}"
                         await self.channel_layer.group_add(
@@ -77,28 +135,34 @@ class GameConsumer(AsyncWebsocketConsumer):
                             self.channel_name
                         )
                         
-                        # Send confirmation
-                        await self.send_json({
+                        # Send confirmation and initial game state
+                        response = {
                             'type': 'game_created',
                             'game_id': game.id,
-                            'player_id': self.user.id
-                        })
-                        logger.info(f"Game {game.id} created successfully")
-                    else:
-                        await self.send_json({
-                            'type': 'error',
-                            'message': 'Failed to create game'
-                        })
+                            'player_id': self.user.id,
+                            'game_state': self.game_state
+                        }
+                        logger.info(f"Sending game created response: {response}")
+                        await self.send_json(response)
+                        
+                        # Broadcast initial game state
+                        await self.channel_layer.group_send(
+                            self.channel_group_name,
+                            {
+                                'type': 'game_state_update',
+                                'game_state': self.game_state
+                            }
+                        )
                 except Exception as e:
                     logger.error(f"Error creating game: {str(e)}", exc_info=True)
                     await self.send_json({
                         'type': 'error',
                         'message': 'Failed to create game'
                     })
+            
             elif message_type == 'join_game':
                 game_id = data.get('game_id')
                 if not game_id:
-                    # Find an available game
                     game = await self.find_available_game()
                     if game:
                         game_id = game.id
@@ -112,7 +176,6 @@ class GameConsumer(AsyncWebsocketConsumer):
                 try:
                     game_data = await self.join_game(game_id)
                     if game_data:
-                        # Join game channel
                         self.game = game_data['game']
                         self.channel_group_name = f"game_{game_id}"
                         await self.channel_layer.group_add(
@@ -120,55 +183,90 @@ class GameConsumer(AsyncWebsocketConsumer):
                             self.channel_name
                         )
                         
-                        # Send confirmation to both players
+                        # Send confirmation to both players with game state
                         game_message = {
                             'type': 'game_joined',
                             'game_id': game_id,
                             'player1_id': game_data['player1_id'],
                             'player2_id': game_data['player2_id'],
-                            'status': 'active'
+                            'status': 'active',
+                            'game_state': self.game_state
                         }
+                        logger.info(f"Broadcasting game joined message: {game_message}")
                         await self.channel_layer.group_send(
                             self.channel_group_name,
                             game_message
                         )
-                        logger.info(f"User {self.user.username} joined game {game_id}")
-                    else:
-                        # Check if the game is already active
-                        game = await self.get_game(game_id)
-                        if game and game.status == 'active' and (game.player1 == self.user or game.player2 == self.user):
-                            # User is already in this game, send them the game state
-                            self.game = game
-                            self.channel_group_name = f"game_{game_id}"
-                            await self.channel_layer.group_add(
-                                self.channel_group_name,
-                                self.channel_name
-                            )
-                            await self.send_json({
-                                'type': 'game_joined',
-                                'game_id': game_id,
-                                'player1_id': game.player1.id,
-                                'player2_id': game.player2.id,
-                                'status': 'active'
-                            })
-                        else:
-                            await self.send_json({
-                                'type': 'error',
-                                'message': 'Game is no longer available'
-                            })
+                        
+                        # Broadcast initial game state
+                        await self.channel_layer.group_send(
+                            self.channel_group_name,
+                            {
+                                'type': 'game_state_update',
+                                'game_state': self.game_state
+                            }
+                        )
                 except Exception as e:
                     logger.error(f"Error joining game: {str(e)}", exc_info=True)
                     await self.send_json({
                         'type': 'error',
                         'message': 'Failed to join game'
                     })
+            
+            elif message_type == 'paddle_move':
+                try:
+                    direction = data.get('direction')
+                    if not direction:
+                        return
+                        
+                    paddle_key = 'player1' if self.game.player1 == self.user else 'player2'
+                    logger.info(f"Moving paddle for {self.user.username} ({paddle_key}) in direction: {direction}")
+                    
+                    if direction == 'up':
+                        self.game_state['paddles'][paddle_key]['y'] = max(
+                            0,
+                            self.game_state['paddles'][paddle_key]['y'] - self.game_state['paddle_speed']
+                        )
+                    elif direction == 'down':
+                        self.game_state['paddles'][paddle_key]['y'] = min(
+                            self.game_state['canvas']['height'] - self.game_state['paddles'][paddle_key]['height'],
+                            self.game_state['paddles'][paddle_key]['y'] + self.game_state['paddle_speed']
+                        )
+                    
+                    # Broadcast updated game state
+                    await self.channel_layer.group_send(
+                        self.channel_group_name,
+                        {
+                            'type': 'game_state_update',
+                            'game_state': self.game_state
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"Error handling paddle movement: {str(e)}", exc_info=True)
+            
+            elif message_type == 'user_connected':
+                # Handle user connection info
+                user_id = data.get('user_id')
+                username = data.get('username')
+                
+                # Validate that the WebSocket user matches the session user
+                if str(self.user_id) != str(user_id) or self.username != username:
+                    await self.send_json({
+                        'type': 'error',
+                        'message': 'User session mismatch'
+                    })
+                    await self.close()
+                    return
+                
+                logger.info(f"User connected: {username} (ID: {user_id})")
+
             else:
                 await self.send_json({
                     'type': 'error',
                     'message': f'Unknown message type: {message_type}'
                 })
                 
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             logger.error(f"Invalid JSON received: {text_data}")
             await self.send_json({
                 'type': 'error',
@@ -192,19 +290,16 @@ class GameConsumer(AsyncWebsocketConsumer):
             logger.error(f"Error getting game: {str(e)}", exc_info=True)
             return None
 
-    @database_sync_to_async
-    def create_game(self):
-        """Create a new game"""
+    async def create_game(self):
         try:
-            with transaction.atomic():
-                game = Game.objects.create(
-                    player1=self.user,
-                    status='waiting',
-                    score_player1=0,
-                    score_player2=0
-                )
-                logger.info(f"Created game {game.id} for user {self.user.username}")
-                return game
+            logger.info(f"Creating new game for user {self.user.username}")
+            game = Game.objects.create(
+                player1=self.user,
+                status='waiting'
+            )
+            await sync_to_async(game.save)()
+            logger.info(f"Game {game.id} created successfully")
+            return game
         except Exception as e:
             logger.error(f"Error creating game: {str(e)}", exc_info=True)
             return None
@@ -222,44 +317,63 @@ class GameConsumer(AsyncWebsocketConsumer):
             logger.error(f"Error finding available game: {str(e)}", exc_info=True)
             return None
 
-    @database_sync_to_async
-    def join_game(self, game_id):
-        """Join an existing game"""
+    async def join_game(self, game_id):
         try:
-            with transaction.atomic():
-                game = Game.objects.select_for_update().get(
-                    id=game_id,
-                    status='waiting'
-                )
-                if game.player2 is None and game.player1 != self.user:
-                    game.player2 = self.user
-                    game.status = 'active'
-                    game.save()
-                    
-                    # Get player IDs in a sync context
-                    player1_id = game.player1.id
-                    player2_id = game.player2.id
-                    
-                    return {
-                        'game': game,
-                        'player1_id': player1_id,
-                        'player2_id': player2_id
-                    }
+            game = await self.get_game(game_id)
+            if not game:
+                logger.error(f"Game {game_id} not found")
                 return None
-        except Game.DoesNotExist:
-            logger.error(f"Game {game_id} not found or not available")
-            return None
+
+            if game.status == 'waiting' and game.player1 != self.user:
+                logger.info(f"User {self.user.username} joining game {game_id}")
+                game.player2 = self.user
+                game.status = 'active'
+                await sync_to_async(game.save)()
+                return {
+                    'game': game,
+                    'player1_id': game.player1.id,
+                    'player2_id': self.user.id
+                }
+            elif game.status == 'active' and (game.player1 == self.user or game.player2 == self.user):
+                logger.info(f"User {self.user.username} reconnecting to game {game_id}")
+                return {
+                    'game': game,
+                    'player1_id': game.player1.id,
+                    'player2_id': game.player2.id
+                }
+            else:
+                logger.warning(f"Game {game_id} is not available for joining")
+                return None
         except Exception as e:
             logger.error(f"Error joining game: {str(e)}", exc_info=True)
             return None
 
     async def game_joined(self, event):
-        """Handle game_joined message"""
+        """
+        Handle game joined event.
+        """
         try:
-            logger.info(f"Sending game_joined event to {self.user.username}: {event}")
+            logger.info(f"Handling game joined event for {self.user.username}")
+            await self.send_json({
+                'type': 'game_joined',
+                'game_id': event['game_id'],
+                'player1_id': event['player1_id'],
+                'player2_id': event['player2_id'],
+                'status': event['status'],
+                'game_state': self.game_state
+            })
+        except Exception as e:
+            logger.error(f"Error handling game joined event: {str(e)}", exc_info=True)
+
+    async def game_state_update(self, event):
+        """
+        Send game state update to WebSocket.
+        """
+        try:
+            logger.info(f"Broadcasting game state update to {self.user.username}")
             await self.send_json(event)
         except Exception as e:
-            logger.error(f"Error sending game_joined event: {str(e)}", exc_info=True)
+            logger.error(f"Error sending game state update: {str(e)}", exc_info=True)
 
     async def send_json(self, content):
         """Send JSON message to WebSocket"""

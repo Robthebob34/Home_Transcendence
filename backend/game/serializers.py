@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Game, Tournament
+from .models import Game
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -7,11 +7,6 @@ User = get_user_model()
 class GameSerializer(serializers.ModelSerializer):
     class Meta:
         model = Game
-        fields = '__all__'
-
-class TournamentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Tournament
         fields = '__all__'
 
 class GameDetailSerializer(serializers.ModelSerializer):
@@ -22,6 +17,7 @@ class GameDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Game
         fields = '__all__'
+        depth = 1
 
     def get_player1(self, obj):
         return {
