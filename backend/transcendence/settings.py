@@ -157,34 +157,50 @@ CHANNEL_LAYERS = {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
             'hosts': [('redis', 6379)],
+            'capacity': 1500,
+            'expiry': 3600,  # 1 hour in seconds
         },
     },
 }
 
+# WebSocket specific settings
+WEBSOCKET_ACCEPT_ALL = True  # Accept WebSocket upgrade requests
+WEBSOCKET_TIMEOUT = 3600  # 1 hour timeout for WebSocket connections
+
 # CORS settings
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS settings
+CORS_ALLOWED_ORIGINS = ['http://localhost', 'http://localhost:80']
 CORS_ALLOW_CREDENTIALS = True
-CSRF_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_HTTPONLY = False
-CSRF_TRUSTED_ORIGINS = ['http://localhost', 'http://localhost:80']
-CSRF_USE_SESSIONS = False
-CSRF_COOKIE_NAME = 'csrftoken'
+CORS_ALLOW_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 # CSRF settings
 CSRF_COOKIE_SECURE = False  # Set to True in production
-CSRF_COOKIE_DOMAIN = None
-CSRF_COOKIE_PATH = '/'
-SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_NAME = 'csrftoken'
+CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN'
+CSRF_TRUSTED_ORIGINS = ['http://localhost', 'http://localhost:80']
+CSRF_USE_SESSIONS = False
 
 # Session settings
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 SESSION_COOKIE_NAME = 'sessionid'
 SESSION_COOKIE_SECURE = False  # Set to True in production
 SESSION_COOKIE_AGE = 1209600  # 2 weeks in seconds
-SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_COOKIE_SAMESITE = 'Lax'  # Match CSRF cookie setting
+SESSION_COOKIE_HTTPONLY = True
 SESSION_SAVE_EVERY_REQUEST = True
-SESSION_COOKIE_SAMESITE = 'Strict'
 
 # REST Framework settings
 REST_FRAMEWORK = {

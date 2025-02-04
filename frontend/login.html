@@ -148,11 +148,16 @@
                     console.log('Fetching CSRF token...');
                     const csrfResponse = await fetch('/api/users/csrf/', {
                         method: 'GET',
-                        credentials: 'include'
+                        credentials: 'include',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
                     });
 
-                    console.log('CSRF response status:', csrfResponse.status);
                     if (!csrfResponse.ok) {
+                        const errorText = await csrfResponse.text();
+                        console.error('CSRF Error:', csrfResponse.status, errorText);
                         throw new Error('Failed to get CSRF token');
                     }
 
@@ -160,38 +165,47 @@
                     const csrfToken = csrfData.csrfToken;
                     console.log('Got CSRF token');
 
+                    // Get existing cookies
+                    const cookies = document.cookie.split(';').reduce((acc, cookie) => {
+                        const [name, value] = cookie.trim().split('=');
+                        acc[name] = value;
+                        return acc;
+                    }, {});
+
                     // Attempt login
                     console.log('Attempting login...');
                     const loginResponse = await fetch('/api/users/login/', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-CSRFToken': csrfToken
+                            'X-CSRFToken': csrfToken,
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
                         },
                         credentials: 'include',
                         body: JSON.stringify({ username, password })
                     });
+                    console.log('Request headers:', {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken,
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    });
 
-                    console.log('Login response status:', loginResponse.status);
-                    const responseText = await loginResponse.text();
-                    console.log('Login response text:', responseText);
-
-                    let responseData;
-                    try {
-                        responseData = JSON.parse(responseText);
-                    } catch (e) {
-                        console.error('Failed to parse response as JSON:', e);
-                        throw new Error('Invalid response from server');
+                    if (!loginResponse.ok) {
+                        const errorText = await loginResponse.text();
+                        console.error('Login Error:', loginResponse.status, errorText);
+                        throw new Error('Login failed: ' + errorText);
                     }
 
-                    if (loginResponse.ok) {
-                        console.log('Login successful:', responseData);
-                        localStorage.setItem('user', JSON.stringify(responseData));
-                        window.location.href = '/game';
-                    } else {
-                        console.error('Login failed:', responseData);
-                        showError(responseData.detail || 'Login failed');
-                    }
+                    const responseData = await loginResponse.json();
+                    console.log('Login successful');
+                    
+                    // Store user data
+                    localStorage.setItem('user', JSON.stringify(responseData));
+                    
+                    // Redirect to game page
+                    window.location.href = '/game.html';
                 } catch (error) {
                     console.error('Login error:', error);
                     showError('An error occurred during login. Please try again. Error: ' + error.message);

@@ -57,8 +57,15 @@ def register_view(request):
             'detail': 'Registration failed'
         }, status=status.HTTP_400_BAD_REQUEST)
 
+@api_view(['GET'])
+@ensure_csrf_cookie
+@permission_classes([AllowAny])
+def get_csrf_token(request):
+    token = get_token(request)
+    return Response({'csrfToken': token})
+
 @api_view(['POST'])
-@csrf_exempt
+@ensure_csrf_cookie
 @permission_classes([AllowAny])
 def login_view(request):
     try:
@@ -157,11 +164,14 @@ def profile_view(request):
 
 @api_view(['GET'])
 @ensure_csrf_cookie
+@csrf_exempt
 @permission_classes([AllowAny])
-def csrf_token(request):
+def get_csrf_token(request):
     token = get_token(request)
     logger.info(f"Generated CSRF token: {token}")
-    return Response({'csrfToken': token})
+    response = Response({'csrfToken': token})
+    response['X-CSRFToken'] = token
+    return response
 
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])

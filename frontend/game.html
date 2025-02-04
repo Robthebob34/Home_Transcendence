@@ -207,19 +207,36 @@
         </div>
     </div>
 
-    <script src="/static/js/game.js"></script>
     <script>
         let game = null;
         let gameInitialized = false;
+        
+        function loadGameScript() {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = '/static/js/game.js';
+                script.onload = () => {
+                    console.log('Game script loaded successfully');
+                    resolve();
+                };
+                script.onerror = () => {
+                    console.error('Failed to load game script');
+                    reject(new Error('Failed to load game script'));
+                };
+                document.body.appendChild(script);
+            });
+        }
 
-        function initializeGame() {
+        async function initializeGame() {
             if (gameInitialized) {
                 console.log('Game already initialized, skipping...');
                 return;
             }
             
-            console.log('Initializing game instance...');
+            console.log('Loading game script...');
             try {
+                await loadGameScript();
+                console.log('Creating game instance...');
                 game = new PongGame();
                 gameInitialized = true;
                 console.log('Game instance created successfully');
@@ -236,13 +253,19 @@
                     const userData = await response.json();
                     updateUserInfo(userData);
                     
-                    // Initialize game after successful auth and ensure DOM is ready
-                    if (!gameInitialized && document.readyState === 'complete') {
-                        console.log('DOM is ready, initializing game after auth');
-                        initializeGame();
-                    } else if (!gameInitialized) {
-                        console.log('Waiting for DOM to be ready...');
-                        window.addEventListener('load', initializeGame);
+                    // Initialize game after successful auth
+                    if (!gameInitialized) {
+                        // Ensure we wait for the DOM to be fully loaded
+                        if (document.readyState === 'complete') {
+                            console.log('DOM is ready, initializing game after auth');
+                            setTimeout(initializeGame, 0); // Use setTimeout to ensure all scripts are loaded
+                        } else {
+                            console.log('Waiting for DOM to be ready...');
+                            window.addEventListener('load', () => {
+                                console.log('Window loaded, initializing game...');
+                                setTimeout(initializeGame, 0);
+                            });
+                        }
                     }
                     
                     return true;

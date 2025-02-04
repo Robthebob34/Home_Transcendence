@@ -115,6 +115,13 @@ class GameConsumer(AsyncWebsocketConsumer):
             data = json.loads(text_data)
             message_type = data.get('type')
             
+            # Handle heartbeat messages
+            if message_type == 'heartbeat':
+                await self.send_json({
+                    'type': 'heartbeat_response'
+                })
+                return
+            
             # Validate user session
             if self.scope["user"].is_anonymous:
                 await self.send_json({
@@ -290,19 +297,23 @@ class GameConsumer(AsyncWebsocketConsumer):
             logger.error(f"Error getting game: {str(e)}", exc_info=True)
             return None
 
-    async def create_game(self):
+    @database_sync_to_async
+    def create_game_sync(self):
         try:
             logger.info(f"Creating new game for user {self.user.username}")
             game = Game.objects.create(
                 player1=self.user,
                 status='waiting'
             )
-            await sync_to_async(game.save)()
+            game.save()
             logger.info(f"Game {game.id} created successfully")
             return game
         except Exception as e:
             logger.error(f"Error creating game: {str(e)}", exc_info=True)
             return None
+
+    async def create_game(self):
+        return await self.create_game_sync()
 
     @database_sync_to_async
     def find_available_game(self):
@@ -354,16 +365,90 @@ class GameConsumer(AsyncWebsocketConsumer):
         """
         try:
             logger.info(f"Handling game joined event for {self.user.username}")
+            # Initialize game state
+            if not hasattr(self, '_game_state'):
+                self._game_state = {
+                    'ball': {'x': 400, 'y': 300, 'dx': 5, 'dy': 5, 'radius': 10},
+                    'paddles': {
+                        'player1': {'x': 50, 'y': 250, 'width': 20, 'height': 100},
+                        'player2': {'x': 730, 'y': 250, 'width': 20, 'height': 100}
+                    },
+                    'canvas': {'width': 800, 'height': 600}
+                }
+            
             await self.send_json({
                 'type': 'game_joined',
                 'game_id': event['game_id'],
                 'player1_id': event['player1_id'],
                 'player2_id': event['player2_id'],
-                'status': event['status'],
-                'game_state': self.game_state
+                'game_state': self._game_state
             })
+            
+            # Start game loop when both players have joined
+            if self.game and self.game.status == 'active':
+                asyncio.create_task(self.game_loop())
         except Exception as e:
-            logger.error(f"Error handling game joined event: {str(e)}", exc_info=True)
+            logger.error(f'Error in game_joined: {str(e)}', exc_info=True)
+    
+    async def game_loop(self):
+        """Game loop to update ball position and send state updates"""
+        try:
+            logger.info('Starting game loop')
+            while self.game and self.game.status == 'active':
+                # Initialize game state if not exists
+                if not hasattr(self, '_game_state'):
+                    self._game_state = {
+                        'ball': {'x': 400, 'y': 300, 'dx': 5, 'dy': 5, 'radius': 10},
+                        'paddles': {
+                            'player1': {'x': 50, 'y': 250, 'width': 20, 'height': 100},
+                            'player2': {'x': 730, 'y': 250, 'width': 20, 'height': 100}
+                        },
+                        'canvas': {'width': 800, 'height': 600}
+                    }
+                
+                # Update ball position
+                self._game_state['ball']['x'] += self._game_state['ball']['dx']
+                self._game_state['ball']['y'] += self._game_state['ball']['dy']
+                
+                # Ball collision with top and bottom walls
+                if (self._game_state['ball']['y'] <= self._game_state['ball']['radius'] or
+                    self._game_state['ball']['y'] >= self._game_state['canvas']['height'] - self._game_state['ball']['radius']):
+                    self._game_state['ball']['dy'] *= -1
+                
+                # Ball collision with paddles
+                ball = self._game_state['ball']
+                paddles = self._game_state['paddles']
+                
+                # Left paddle collision
+                if (ball['x'] - ball['radius'] <= paddles['player1']['x'] + paddles['player1']['width'] and
+                    ball['y'] >= paddles['player1']['y'] and
+                    ball['y'] <= paddles['player1']['y'] + paddles['player1']['height']):
+                    ball['dx'] *= -1
+                
+                # Right paddle collision
+                if (ball['x'] + ball['radius'] >= paddles['player2']['x'] and
+                    ball['y'] >= paddles['player2']['y'] and
+                    ball['y'] <= paddles['player2']['y'] + paddles['player2']['height']):
+                    ball['dx'] *= -1
+                
+                # Send game state update to all players
+                await self.channel_layer.group_send(
+                    self.channel_group_name,
+                    {
+                        'type': 'game_state_update',
+                        'game_state': self._game_state
+                    }
+                )
+                
+                # Wait before next update (60 FPS)
+                await asyncio.sleep(1/60)
+                
+        except Exception as e:
+            logger.error(f'Error in game loop: {str(e)}', exc_info=True)
+            await self.send_json({
+                'type': 'error',
+                'message': 'Game loop error'
+            })
 
     async def game_state_update(self, event):
         """
