@@ -9,6 +9,7 @@ from django.db import transaction
 from django.db.models import Q
 import asyncio
 import logging
+import time
 from datetime import timedelta
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,8 @@ class GameConsumer(AsyncWebsocketConsumer):
         self.channel_group_name = None
         self.user_group = None
         self.is_connected = False
+        self.last_paddle_update = {}
+        self.paddle_update_interval = 0.016  # 16ms (~60fps)
 
     @property
     def game_state(self):
@@ -41,8 +44,8 @@ class GameConsumer(AsyncWebsocketConsumer):
                 'ball': {
                     'x': canvas_width // 2,
                     'y': canvas_height // 2,
-                    'dx': 5,
-                    'dy': 5,
+                    'dx': 7,
+                    'dy': 7,
                     'radius': ball_radius
                 },
                 'paddles': {
@@ -63,7 +66,7 @@ class GameConsumer(AsyncWebsocketConsumer):
                     'player1': 0,
                     'player2': 0
                 },
-                'paddle_speed': 10
+                'paddle_speed': 25
             }
             logger.info(f"Initial game state: {self._game_state}")
         return self._game_state
@@ -222,25 +225,52 @@ class GameConsumer(AsyncWebsocketConsumer):
             
             elif message_type == 'paddle_move':
                 try:
+                    if not self.game or not hasattr(self.game, 'player1') or not hasattr(self.game, 'player2'):
+                        logger.error("Game not properly initialized for paddle movement")
+                        return
+
                     direction = data.get('direction')
                     if not direction:
                         return
-                        
-                    paddle_key = 'player1' if self.game.player1 == self.user else 'player2'
+
+                    # Determine which paddle to move based on the player
+                    if self.user == self.game.player1:
+                        paddle_key = 'player1'
+                    elif self.user == self.game.player2:
+                        paddle_key = 'player2'
+                    else:
+                        logger.error(f"User {self.user.username} is not a player in this game")
+                        return
+
+                    # Rate limiting
+                    current_time = time.time()
+                    last_update = self.last_paddle_update.get(paddle_key, 0)
+                    if current_time - last_update < self.paddle_update_interval:
+                        return
+                    self.last_paddle_update[paddle_key] = current_time
+
                     logger.info(f"Moving paddle for {self.user.username} ({paddle_key}) in direction: {direction}")
+
+                    # Get current paddle position
+                    paddle = self.game_state['paddles'][paddle_key]
+                    paddle_speed = self.game_state['paddle_speed']
+                    canvas_height = self.game_state['canvas']['height']
+                    paddle_height = paddle['height']
+
+                    # Calculate new position with direct movement
+                    current_y = paddle['y']
                     
                     if direction == 'up':
-                        self.game_state['paddles'][paddle_key]['y'] = max(
-                            0,
-                            self.game_state['paddles'][paddle_key]['y'] - self.game_state['paddle_speed']
-                        )
+                        new_y = max(0, current_y - paddle_speed)
                     elif direction == 'down':
-                        self.game_state['paddles'][paddle_key]['y'] = min(
-                            self.game_state['canvas']['height'] - self.game_state['paddles'][paddle_key]['height'],
-                            self.game_state['paddles'][paddle_key]['y'] + self.game_state['paddle_speed']
-                        )
-                    
-                    # Broadcast updated game state
+                        new_y = min(canvas_height - paddle_height, current_y + paddle_speed)
+                    else:
+                        return
+
+                    # Update paddle position
+                    self.game_state['paddles'][paddle_key]['y'] = new_y
+
+                    # Broadcast updated game state immediately
                     await self.channel_layer.group_send(
                         self.channel_group_name,
                         {
@@ -364,7 +394,6 @@ class GameConsumer(AsyncWebsocketConsumer):
         Handle game joined event.
         """
         try:
-            logger.info(f"Handling game joined event for {self.user.username}")
             # Initialize game state
             if not hasattr(self, '_game_state'):
                 self._game_state = {
@@ -373,7 +402,8 @@ class GameConsumer(AsyncWebsocketConsumer):
                         'player1': {'x': 50, 'y': 250, 'width': 20, 'height': 100},
                         'player2': {'x': 730, 'y': 250, 'width': 20, 'height': 100}
                     },
-                    'canvas': {'width': 800, 'height': 600}
+                    'canvas': {'width': 800, 'height': 600},
+                    'score': {'player1': 0, 'player2': 0}
                 }
             
             await self.send_json({
@@ -385,7 +415,7 @@ class GameConsumer(AsyncWebsocketConsumer):
             })
             
             # Start game loop when both players have joined
-            if self.game and self.game.status == 'active':
+            if self.game and self.game.status == 'active' and self.game.player1 and self.game.player2:
                 asyncio.create_task(self.game_loop())
         except Exception as e:
             logger.error(f'Error in game_joined: {str(e)}', exc_info=True)
@@ -393,43 +423,46 @@ class GameConsumer(AsyncWebsocketConsumer):
     async def game_loop(self):
         """Game loop to update ball position and send state updates"""
         try:
-            logger.info('Starting game loop')
             while self.game and self.game.status == 'active':
-                # Initialize game state if not exists
-                if not hasattr(self, '_game_state'):
-                    self._game_state = {
-                        'ball': {'x': 400, 'y': 300, 'dx': 5, 'dy': 5, 'radius': 10},
-                        'paddles': {
-                            'player1': {'x': 50, 'y': 250, 'width': 20, 'height': 100},
-                            'player2': {'x': 730, 'y': 250, 'width': 20, 'height': 100}
-                        },
-                        'canvas': {'width': 800, 'height': 600}
-                    }
-                
                 # Update ball position
-                self._game_state['ball']['x'] += self._game_state['ball']['dx']
-                self._game_state['ball']['y'] += self._game_state['ball']['dy']
+                ball = self._game_state['ball']
+                ball['x'] += ball['dx']
+                ball['y'] += ball['dy']
                 
                 # Ball collision with top and bottom walls
-                if (self._game_state['ball']['y'] <= self._game_state['ball']['radius'] or
-                    self._game_state['ball']['y'] >= self._game_state['canvas']['height'] - self._game_state['ball']['radius']):
-                    self._game_state['ball']['dy'] *= -1
+                if ball['y'] <= ball['radius'] or ball['y'] >= self._game_state['canvas']['height'] - ball['radius']:
+                    ball['dy'] *= -1
                 
                 # Ball collision with paddles
-                ball = self._game_state['ball']
                 paddles = self._game_state['paddles']
                 
                 # Left paddle collision
                 if (ball['x'] - ball['radius'] <= paddles['player1']['x'] + paddles['player1']['width'] and
                     ball['y'] >= paddles['player1']['y'] and
                     ball['y'] <= paddles['player1']['y'] + paddles['player1']['height']):
-                    ball['dx'] *= -1
+                    ball['dx'] = abs(ball['dx'])  # Ensure ball moves right
+                    ball['dx'] *= 1.1  # Speed up slightly
                 
                 # Right paddle collision
                 if (ball['x'] + ball['radius'] >= paddles['player2']['x'] and
                     ball['y'] >= paddles['player2']['y'] and
                     ball['y'] <= paddles['player2']['y'] + paddles['player2']['height']):
-                    ball['dx'] *= -1
+                    ball['dx'] = -abs(ball['dx'])  # Ensure ball moves left
+                    ball['dx'] *= 1.1  # Speed up slightly
+                
+                # Ball out of bounds - scoring
+                if ball['x'] < 0:  # Player 2 scores
+                    self._game_state['score']['player2'] += 1
+                    ball['x'] = self._game_state['canvas']['width'] / 2
+                    ball['y'] = self._game_state['canvas']['height'] / 2
+                    ball['dx'] = -5  # Reset speed and direction
+                    ball['dy'] = 5 if ball['dy'] > 0 else -5
+                elif ball['x'] > self._game_state['canvas']['width']:  # Player 1 scores
+                    self._game_state['score']['player1'] += 1
+                    ball['x'] = self._game_state['canvas']['width'] / 2
+                    ball['y'] = self._game_state['canvas']['height'] / 2
+                    ball['dx'] = 5  # Reset speed and direction
+                    ball['dy'] = 5 if ball['dy'] > 0 else -5
                 
                 # Send game state update to all players
                 await self.channel_layer.group_send(

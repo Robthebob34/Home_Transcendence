@@ -2,10 +2,9 @@ console.log('=== GAME.JS LOADED ===');
 
 class PongGame {
     constructor() {
-        console.log('Game constructor called');
-        
         // Bind methods to this instance first
         this.handleKeyPress = this.handleKeyPress.bind(this);
+        this.handleKeyUp = this.handleKeyUp.bind(this);
         this.animate = this.animate.bind(this);
         this.draw = this.draw.bind(this);
         this.handleWebSocketMessage = this.handleWebSocketMessage.bind(this);
@@ -22,6 +21,13 @@ class PongGame {
         this.gameId = null;
         this.gameState = null;
         this.animationFrameId = null;
+        this.gameStarted = false;
+        this.isCreatingGame = false;
+        this.canvas = null;
+        this.ctx = null;
+        this.keyState = { w: false, s: false };
+        
+        this.paddleSpeed = 25; // pixels to move per keypress
         
         // Start initialization
         this.init().catch(error => {
@@ -155,8 +161,13 @@ class PongGame {
                     // Set initial canvas size
                     this.canvas.width = 800;
                     this.canvas.height = 600;
+                    // Clear the canvas with black background
+                    this.ctx.fillStyle = '#000000';
+                    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
                     console.log('Canvas initialized successfully');
                 }
+            } else {
+                console.error('Canvas element not found');
             }
             
             // Add event listeners to buttons if they exist
@@ -249,9 +260,19 @@ class PongGame {
         // Bind event listeners
         this.createGameBtn.addEventListener('click', () => this.startGame());
         this.joinGameBtn.addEventListener('click', () => this.joinGame());
-        window.addEventListener('keydown', (e) => this.handleKeyPress(e));
+        window.addEventListener('keydown', this.handleKeyPress);
+        window.addEventListener('keyup', this.handleKeyUp);
         
         console.log('Event listeners initialized');
+    }
+
+    handleKeyUp(event) {
+        // Handle key release events if needed
+        // This can be used to stop paddle movement when keys are released
+        if (this.gameStarted && this.connected) {
+            // Add your key up handling logic here if needed
+            console.log('Key released:', event.key);
+        }
     }
     
     showCanvas() {
@@ -320,7 +341,8 @@ class PongGame {
         }
 
         const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const wsUrl = `${wsScheme}://${window.location.host}/ws/game/`;
+        // Use localhost:8000 for development
+        const wsUrl = `${wsScheme}://localhost:8000/ws/game/`;
         console.log('Attempting to connect to:', wsUrl);
         
         try {
@@ -420,69 +442,136 @@ class PongGame {
     
     handleWebSocketMessage(event) {
         try {
-            console.log('Received message:', event.data);
             const data = JSON.parse(event.data);
-            console.log('Parsed message data:', data);
+            // Only log non-game-state messages
+            if (data.type !== 'game_state_update') {
+                console.log('Received WebSocket message:', event.data);
+            }
             
             switch (data.type) {
                 case 'connection_established':
-                    console.log('Connected to game server');
+                    console.log('Connection established:', {
+                        playerId: data.user.id,
+                        username: data.user.username
+                    });
                     this.connected = true;
                     this.playerId = data.user.id;
                     break;
 
                 case 'game_created':
-                    console.log('Game created:', data.game_id);
+                    console.log('Game created, initializing game state:', data);
                     this.gameId = data.game_id;
+                    this.gameState = data.game_state;
+                    this.isCreatingGame = false;
+                    
+                    // Set player role for game creator
+                    this.playerRole = 'player1';
+                    this.gameState.player1_id = this.playerId;
+                    
+                    console.log('Set as player1 with ID:', this.playerId);
+                    
+                    // Show canvas and start animation
+                    if (this.canvasContainer) {
+                        this.canvasContainer.style.display = 'block';
+                    }
+                    
+                    // Start animation loop even when waiting
+                    if (!this.animationFrameId) {
+                        console.log('Starting animation loop');
+                        this.gameStarted = true; // Set this to true to allow drawing
+                        this.animationFrameId = requestAnimationFrame(() => this.animate());
+                    }
+                    
                     if (this.gameStatus) {
                         this.gameStatus.textContent = 'Waiting for opponent...';
                     }
                     break;
 
                 case 'game_joined':
-                    console.log('Game joined');
+                    console.log('Game joined with data:', data);
+                    this.gameId = data.game_id;
+                    this.gameState = data.game_state;
+                    
+                    // Set player roles
+                    if (data.player1_id && data.player2_id) {
+                        if (this.playerId === data.player1_id) {
+                            this.playerRole = 'player1';
+                            console.log('Set as player1 with ID:', this.playerId);
+                        } else if (this.playerId === data.player2_id) {
+                            this.playerRole = 'player2';
+                            console.log('Set as player2 with ID:', this.playerId);
+                        }
+                        
+                        // Store player IDs in game state
+                        this.gameState.player1_id = data.player1_id;
+                        this.gameState.player2_id = data.player2_id;
+                    }
+                    
                     this.gameStarted = true;
+                    
                     if (this.canvasContainer) {
                         this.canvasContainer.style.display = 'block';
                     }
                     if (this.gameStatus) {
-                        this.gameStatus.textContent = 'Game starting...';
+                        this.gameStatus.textContent = 'Game in progress';
                     }
-                    // Start animation loop when game is joined
-                    requestAnimationFrame(() => this.animate());
+                    
+                    // Start animation loop
+                    if (!this.animationFrameId) {
+                        this.animationFrameId = requestAnimationFrame(() => this.animate());
+                    }
                     break;
 
                 case 'game_state_update':
-                    console.log('Game state update received:', data);
-                    if (!this.gameStarted) {
-                        this.gameStarted = true;
+                    if (data.game_state) {
+                        console.log('Game state update:', {
+                            myPlayerId: this.playerId,
+                            player1_id: data.game_state.player1_id,
+                            player2_id: data.game_state.player2_id,
+                            player1_y: data.game_state.paddles.player1.y,
+                            player2_y: data.game_state.paddles.player2.y
+                        });
+                        this.gameState = data.game_state;
+                        
+                        // Update scores if available
+                        if (this.gameState.score) {
+                            if (this.player1Score) {
+                                this.player1Score.textContent = this.gameState.score.player1;
+                            }
+                            if (this.player2Score) {
+                                this.player2Score.textContent = this.gameState.score.player2;
+                            }
+                        }
+                        
+                        // Make sure canvas is visible and animation is running
                         if (this.canvasContainer) {
                             this.canvasContainer.style.display = 'block';
                         }
-                        // Start animation loop if not already started
+                        
+                        // Start animation if not already running
                         if (!this.animationFrameId) {
-                            this.animationFrameId = requestAnimationFrame(this.animate);
+                            console.log('Starting animation loop');
+                            this.animationFrameId = requestAnimationFrame(() => this.animate());
                         }
-                    }
-                    if (data.game_state) {
-                        console.log('Updating game state:', data.game_state);
-                        this.updateGameState(data.game_state);
                     }
                     break;
 
                 case 'game_over':
-                    this.handleGameOver(data);
+                    this.gameStarted = false;
+                    if (this.animationFrameId) {
+                        cancelAnimationFrame(this.animationFrameId);
+                        this.animationFrameId = null;
+                    }
+                    if (this.gameStatus) {
+                        this.gameStatus.textContent = 'Game Over!';
+                    }
                     break;
 
                 case 'error':
-                    console.error('Game error:', data.message);
                     if (this.gameStatus) {
                         this.gameStatus.textContent = `Error: ${data.message}`;
                     }
                     break;
-
-                default:
-                    console.log('Unknown message type:', data.type);
             }
         } catch (error) {
             console.error('Error handling WebSocket message:', error);
@@ -490,44 +579,31 @@ class PongGame {
     }
     
     startGame() {
-        console.log('startGame called');
-        console.log('Connection status:', this.connected);
-        console.log('WebSocket state:', this.gameSocket ? this.gameSocket.readyState : 'No WebSocket');
-        
-        if (!this.connected) {
-            console.error('Not connected to game server');
+        if (!this.connected || this.isCreatingGame || this.gameId) {
+            console.log('Cannot create game:', {
+                connected: this.connected,
+                isCreatingGame: this.isCreatingGame,
+                hasGameId: !!this.gameId
+            });
             return;
         }
         
-        if (this.gameId) {
-            console.log('Game already created, skipping... Game ID:', this.gameId);
-            return;
-        }
+        this.isCreatingGame = true;
         
-        console.log('Starting new game...');
         if (this.createGameBtn) {
-            console.log('Disabling create game button');
             this.createGameBtn.disabled = true;
-        } else {
-            console.error('Create game button not found');
         }
         
         if (this.joinGameBtn) {
-            console.log('Disabling join game button');
             this.joinGameBtn.disabled = true;
-        } else {
-            console.error('Join game button not found');
         }
         
         try {
-            const message = JSON.stringify({
+            this.gameSocket.send(JSON.stringify({
                 type: 'create_game'
-            });
-            console.log('Sending create_game message:', message);
-            this.gameSocket.send(message);
-            console.log('Message sent successfully');
+            }));
         } catch (error) {
-            console.error('Error sending create_game message:', error);
+            console.error('Error creating game:', error);
         }
     }
     
@@ -537,7 +613,6 @@ class PongGame {
             return;
         }
         
-        console.log('Attempting to join game...');
         if (this.createGameBtn) this.createGameBtn.disabled = true;
         if (this.joinGameBtn) this.joinGameBtn.disabled = true;
         
@@ -547,55 +622,111 @@ class PongGame {
     }
 
     handleKeyPress(event) {
-        if (!this.gameSocket || this.gameSocket.readyState !== WebSocket.OPEN || !this.gameId) return;
+        if (!this.gameSocket || this.gameSocket.readyState !== WebSocket.OPEN || !this.gameId || !this.gameStarted || !this.gameState) {
+
+            return;
+        }
+        
+        const key = event.key.toLowerCase();
+        if (key === 'w' || key === 's') {
+            event.preventDefault();
+            
+            // Get current paddle position
+            const paddleKey = this.playerId === this.gameState.player1_id ? 'player1' : 'player2';
+            const paddle = this.gameState.paddles[paddleKey];
+            const canvasHeight = this.gameState.canvas.height;
+            
+
+            
+            // Move paddle based on key
+            let direction = null;
+            if (key === 'w' && paddle.y > 0) {
+                direction = 'up';
+            } else if (key === 's' && paddle.y < canvasHeight - paddle.height) {
+                direction = 'down';
+            }
+            
+            if (direction) {
+                this.gameSocket.send(JSON.stringify({
+                    type: 'paddle_move',
+                    direction: direction
+                }));
+            }
+        }
+    }
+    
+    updatePaddlePosition() {
+        if (!this.gameSocket || this.gameSocket.readyState !== WebSocket.OPEN || !this.gameId || !this.gameStarted || !this.gameState) {
+            console.log('Cannot update paddle: socket:', !!this.gameSocket, 'state:', this.gameSocket?.readyState, 'gameId:', this.gameId, 'started:', this.gameStarted);
+            return;
+        }
+        
+        const now = performance.now();
+        if (now - this.lastPaddleUpdate < this.paddleUpdateInterval) {
+            return;
+        }
+        
+        // Get current paddle position
+        const paddleKey = this.playerId === this.gameState.player1_id ? 'player1' : 'player2';
+        const paddle = this.gameState.paddles[paddleKey];
+        const canvasHeight = this.gameState.canvas.height;
         
         let direction = null;
-        if (event.key === 'ArrowUp') direction = 'up';
-        if (event.key === 'ArrowDown') direction = 'down';
+        if (this.keyState.w && paddle.y > 0) {
+            direction = 'up';
+        } else if (this.keyState.s && paddle.y < canvasHeight - paddle.height) {
+            direction = 'down';
+        }
         
         if (direction) {
-            console.log('Sending paddle move:', direction);
             this.gameSocket.send(JSON.stringify({
                 type: 'paddle_move',
                 direction: direction
             }));
+            this.lastPaddleUpdate = now;
         }
     }
     
     animate() {
-        try {
-            if (!this.gameStarted) {
-                console.log('Game not started, waiting...');
-                return;
-            }
-
-            // Draw the current game state
-            this.draw();
-
-            // Continue the animation loop with frame rate control
+        if (!this.gameStarted || !this.gameState) {
             if (this.animationFrameId) {
                 cancelAnimationFrame(this.animationFrameId);
+                this.animationFrameId = null;
             }
-            this.animationFrameId = requestAnimationFrame(this.animate);
-        } catch (error) {
-            console.error('Error in animation loop:', error);
-            if (this.animationFrameId) {
-                cancelAnimationFrame(this.animationFrameId);
-            }
+            return;
         }
+
+        // Update paddle position based on key state
+        if (this.keyState.w || this.keyState.s) {
+            this.updatePaddlePosition();
+        }
+
+        // Draw the current game state
+        this.draw();
+
+        // Continue the animation loop
+        this.animationFrameId = requestAnimationFrame(() => this.animate());
     }
+    
     
     draw() {
         try {
-            if (!this.ctx || !this.gameStarted) {
-                console.log('Cannot draw: ctx or game not started');
+            if (!this.ctx || !this.gameState) {
+                console.log('Cannot draw, missing context or game state:', {
+                    hasContext: !!this.ctx,
+                    hasGameState: !!this.gameState
+                });
                 return;
             }
             
+            console.log('Drawing game state:', this.gameState);
+            
+            const { canvas, ball, paddles } = this.gameState;
+            
             // Ensure canvas dimensions are set
             if (!this.canvas.width || !this.canvas.height) {
-                this.canvas.width = 800;
-                this.canvas.height = 600;
+                this.canvas.width = canvas.width;
+                this.canvas.height = canvas.height;
             }
             
             // Clear canvas
@@ -611,10 +742,10 @@ class PongGame {
             this.ctx.stroke();
             this.ctx.setLineDash([]);
             
-            // Draw ball if it exists
-            if (this.ball && typeof this.ball.x === 'number' && typeof this.ball.y === 'number') {
+            // Draw ball
+            if (ball) {
                 this.ctx.beginPath();
-                this.ctx.arc(this.ball.x, this.ball.y, this.ball.radius || 10, 0, Math.PI * 2);
+                this.ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
                 this.ctx.fillStyle = '#00ff88';
                 this.ctx.shadowColor = '#00ff88';
                 this.ctx.shadowBlur = 15;
@@ -627,92 +758,109 @@ class PongGame {
             this.ctx.shadowColor = '#ffffff';
             this.ctx.shadowBlur = 10;
             
-            // Initialize default paddle positions if they don't exist
-            if (!this.paddles) {
-                this.paddles = {
-                    left: { x: 50, y: 250, width: 20, height: 100 },
-                    right: { x: 730, y: 250, width: 20, height: 100 }
-                };
+            // Draw player1 paddle
+            if (paddles.player1) {
+                this.ctx.fillRect(
+                    paddles.player1.x,
+                    paddles.player1.y,
+                    paddles.player1.width,
+                    paddles.player1.height
+                );
+            }
+            
+            // Draw player2 paddle
+            if (paddles.player2) {
+                this.ctx.fillRect(
+                    paddles.player2.x,
+                    paddles.player2.y,
+                    paddles.player2.width,
+                    paddles.player2.height
+                );
+            }
+            
+            // Reset shadow blur after drawing paddles
+            this.ctx.shadowBlur = 0;
+            
+            // Draw scores
+            if (this.gameState.score) {
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.font = '48px Arial';
+                this.ctx.textAlign = 'center';
+                
+                // Player 1 score on the left
+                this.ctx.fillText(
+                    this.gameState.score.player1,
+                    this.canvas.width * 0.25,
+                    60
+                );
+                
+                // Player 2 score on the right
+                this.ctx.fillText(
+                    this.gameState.score.player2,
+                    this.canvas.width * 0.75,
+                    60
+                );
             }
         } catch (error) {
             console.error('Error in draw method:', error);
             if (this.animationFrameId) {
                 cancelAnimationFrame(this.animationFrameId);
+                this.animationFrameId = null;
             }
-        }
-        
-        try {
-            // Draw left paddle
-            if (this.paddles && this.paddles.left) {
-                console.log('Drawing left paddle:', this.paddles.left);
-                this.ctx.fillRect(
-                    this.paddles.left.x,
-                    this.paddles.left.y,
-                    this.paddles.left.width,
-                    this.paddles.left.height
-                );
-            }
-            
-            // Draw right paddle
-            if (this.paddles && this.paddles.right) {
-                console.log('Drawing right paddle:', this.paddles.right);
-                this.ctx.fillRect(
-                    this.paddles.right.x,
-                    this.paddles.right.y,
-                    this.paddles.right.width,
-                    this.paddles.right.height
-                );
-            }
-            
-            // Reset shadow
-            this.ctx.shadowBlur = 0;
-        } catch (error) {
-            console.error('Error drawing paddles:', error);
         }
     }
+
     
     updateGameState(state) {
         if (!state) return;
-        console.log('Updating game state with:', state);
         
-        // Update ball position
-        if (state.ball) {
-            this.ball = state.ball;
-            console.log('Updated ball position:', this.ball);
-        }
-        
-        // Update paddle positions
-        if (state.paddles) {
-            // Create a new paddles object if it doesn't exist
-            if (!this.paddles) {
-                this.paddles = {
-                    left: { x: 50, y: 250, width: 20, height: 100 },
-                    right: { x: 730, y: 250, width: 20, height: 100 }
-                };
+        try {
+            // Update game status and player IDs
+            if (state.status) {
+                this.gameStatus = state.status;
+            }
+            if (state.player1_id) {
+                this.player1Id = state.player1_id;
+            }
+            if (state.player2_id) {
+                this.player2Id = state.player2_id;
+            }
+            
+            // Update ball position
+            if (state.ball) {
+                this.ball = state.ball;
             }
             
             // Update paddle positions
-            if (state.paddles.player1) {
-                this.paddles.left = {
-                    ...this.paddles.left,
-                    ...state.paddles.player1
-                };
-                console.log('Updated left paddle:', this.paddles.left);
+            if (state.paddles) {
+                // Initialize paddles if they don't exist
+                if (!this.paddles) {
+                    this.paddles = {
+                        left: { x: 50, y: 250, width: 20, height: 100 },
+                        right: { x: 730, y: 250, width: 20, height: 100 }
+                    };
+                }
+                
+                // Update left paddle
+                if (state.paddles.player1) {
+                    this.paddles.left.y = state.paddles.player1.y;
+                    console.log('Updated left paddle position:', this.paddles.left.y);
+                }
+                
+                // Update right paddle
+                if (state.paddles.player2) {
+                    this.paddles.right.y = state.paddles.player2.y;
+                    console.log('Updated right paddle position:', this.paddles.right.y);
+                }
             }
-            if (state.paddles.player2) {
-                this.paddles.right = {
-                    ...this.paddles.right,
-                    ...state.paddles.player2
-                };
-                console.log('Updated right paddle:', this.paddles.right);
+            
+            // Update score
+            if (state.score) {
+                if (this.player1Score) this.player1Score.textContent = state.score.player1;
+                if (this.player2Score) this.player2Score.textContent = state.score.player2;
             }
-        }
-        
-        // Update score
-        if (state.score) {
-            this.score = state.score;
-            if (this.player1Score) this.player1Score.textContent = state.score.left;
-            if (this.player2Score) this.player2Score.textContent = state.score.right;
+        } catch (error) {
+            console.error('Error updating game state:', error);
         }
     }
 
@@ -722,7 +870,7 @@ class PongGame {
         document.querySelector('.canvas-container').style.display = 'none';
         document.querySelector('.game-buttons').style.display = 'block';
     }
-}
+};  // Added semicolon here
 
 // Initialize game when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
