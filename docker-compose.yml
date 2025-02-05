@@ -7,6 +7,11 @@ services:
       - POSTGRES_PASSWORD=pongpass
     volumes:
       - postgres_data:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "ponguser", "-d", "pongdb"]
+      interval: 5s
+      retries: 5
+      timeout: 3s
 
   redis:
     image: redis:6
@@ -34,8 +39,10 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   frontend:
     image: nginx:alpine
@@ -48,7 +55,8 @@ services:
       - static_volume:/usr/share/nginx/html/static/django
       - media_volume:/usr/share/nginx/html/media
     depends_on:
-      - backend
+      backend:
+        condition: service_started
 
 volumes:
   postgres_data:
