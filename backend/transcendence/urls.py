@@ -20,6 +20,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
+from users.views import oauth_callback
 import debug_toolbar
 
 def ping(request):
@@ -32,4 +33,5 @@ urlpatterns = [
     path('api/game/', include('game.urls')),
     path('api/chat/', include('livechat.urls')),
     path('api/ping/', csrf_exempt(ping), name='ping'),
+    path('auth/callback/', oauth_callback, name='oauth_callback'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -7,13 +7,88 @@ from django.contrib.auth import authenticate, login, logout
 from .serializers import UserSerializer, UserRegistrationSerializer
 from django.contrib.auth import get_user_model
 from django.middleware.csrf import get_token
+from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
+from django.shortcuts import redirect
 import logging
+import requests
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
-# Create your views here.
+
+
+CLIENT_ID = "u-s4t2ud-7720a84449f888d7ea7b95c0f35efe215017c9ddf0900283de4a4b61105ce772"
+CLIENT_SECRET = "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"
+REDIRECT_URI = "http://localhost:8000/auth/callback/"
+TOKEN_URL = "https://api.intra.42.fr/oauth/token"
+USER_INFO_URL = "https://api.intra.42.fr/v2/me"
+
+
+@api_view(["GET"])
+@ensure_csrf_cookie
+@permission_classes([AllowAny])
+def oauth_login(request):
+    auth_url = f"https://api.intra.42.fr/oauth/authorize?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&response_type=code"
+    return redirect(auth_url)
+
+@api_view(["GET"])
+@ensure_csrf_cookie
+@permission_classes([AllowAny])
+def oauth_callback(request):
+    code = request.GET.get("code")
+    if not code:
+        return Response({"error": "No authorization code provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+    data = {
+        "grant_type": "authorization_code",
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "code": code,
+        "redirect_uri": REDIRECT_URI,
+    }
+    response = requests.post(TOKEN_URL, data=data)
+    if response.status_code != 200:
+        return Response({"error": "Failed to get access token"}, status=status.HTTP_400_BAD_REQUEST)
+    token_data = response.json()
+    access_token = token_data.get("access_token")
+    headers = {"Authorization": f"Bearer {access_token}"}
+    user_info = requests.get(USER_INFO_URL, headers=headers)
+    if user_info.status_code != 200:
+        return Response({"error": "Failed to fetch user info"}, status=status.HTTP_400_BAD_REQUEST)
+    user_data = user_info.json()
+
+    user, created = User.objects.get_or_create(
+        username=user_data["login"],
+        defaults={"email": user_data["email"], "display_name": user_data["displayname"], "avatar": user_data["image"]["link"]}
+    )
+    user.backend = 'django.contrib.auth.backends.ModelBackend'
+    login(request, user)
+    return redirect("http://localhost/game")
+
+
+@api_view(["GET"])
+@ensure_csrf_cookie
+@permission_classes([AllowAny])
+def user_info(request):
+    if request.user.is_authenticated:
+        return Response({"id": request.user.id, "username": request.user.username}, status=200)
+    return Response({"error": "Not authenticated"}, status=401)
+
+@api_view(["GET"])
+@ensure_csrf_cookie
+@permission_classes([AllowAny])
+def user_delete(request):
+    user_id = request.query_params.get('user_id')
+
+    if not user_id:
+        return Response({'detail': 'Please provide user_id'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        user = get_object_or_404(User, id=user_id)
+        user.delete()
+        return Response({'message': 'user got deleted'}, status=status.HTTP_200_OK)
+    except User.DoesNotExist:
+        return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['POST'])
 @ensure_csrf_cookie
