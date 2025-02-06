@@ -19,10 +19,13 @@ User = get_user_model()
 @ensure_csrf_cookie
 @permission_classes([AllowAny])
 def register_view(request):
+    #logger.info(f"Received login request. Headers: {dict(request.headers)}")
+     #   username = request.data.get('username')
+      #  password = request.data.get('password')
     username = request.data.get('username')
     email = request.data.get('email')
     password = request.data.get('password')
-    
+
     logger.info(f"Registration attempt for user: {username}")
 
     if not username or not password or not email:
@@ -72,7 +75,7 @@ def login_view(request):
         logger.info(f"Received login request. Headers: {dict(request.headers)}")
         username = request.data.get('username')
         password = request.data.get('password')
-        
+
         logger.info(f"Login attempt for user: {username}")
 
         if not username or not password:
@@ -85,13 +88,13 @@ def login_view(request):
         try:
             user = User.objects.get(username=username)
             logger.info(f"User exists: {user.username}")
-            
+
             # Ensure display_name is set
             if not user.display_name:
                 user.display_name = user.username
                 user.save()
                 logger.info(f"Set display_name to {user.display_name}")
-                
+
         except User.DoesNotExist:
             logger.warning(f"User {username} does not exist")
             return Response({
@@ -110,14 +113,14 @@ def login_view(request):
             # Clear any existing sessions for this user
             logger.info(f"Clearing existing sessions for user {username}")
             request.session.flush()
-            
+
             # Create new session
             login(request, user)
             logger.info(f"New session created for user {username}")
-            
+
             # Set session expiry
             request.session.set_expiry(1209600)  # 2 weeks
-            
+
             return Response({
                 'detail': 'Login successful',
                 'user': {
@@ -144,11 +147,11 @@ def logout_view(request):
     try:
         username = request.user.username
         logger.info(f"Logout request for user: {username}")
-        
+
         # Clear the session
         request.session.flush()
         logout(request)
-        
+
         logger.info(f"User {username} logged out successfully")
         return Response({'detail': 'Logout successful'}, status=status.HTTP_200_OK)
     except Exception as e:
