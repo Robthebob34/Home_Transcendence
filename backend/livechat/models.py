@@ -24,3 +24,4 @@ class BlockedUser(models.Model):
 
     def __str__(self):
         return f"{self.id_user_0.username} a blocked {self.id_user_1.username}"
+

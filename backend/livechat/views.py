@@ -107,4 +107,7 @@ def get_message(request):
         return Response({'error': 'User to send sending message not found'}, status=status.HTTP_404_NOT_FOUND)
 
     messages = ChatMessage.objects.filter(id_user_0=id_user_0, id_user_1=id_user_1) | ChatMessage.objects.filter(id_user_0=id_user_1, id_user_1=id_user_0)
-    return Response({'messages': f'{messages}'}, status=status.HTTP_201_CREATED)
+    var = ""
+    for message in messages:
+        var += f"{message.id} : {message.message} : {User.objects.get(id=message.id_user_0_id).username} -> {User.objects.get(id=message.id_user_1_id).username}, "
+    return Response({'messages': f'{var}'})
