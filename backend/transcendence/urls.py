@@ -30,5 +30,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/users/', include('users.urls')),
     path('api/game/', include('game.urls')),
+    path('api/chat/', include('livechat.urls')),
     path('api/ping/', csrf_exempt(ping), name='ping'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

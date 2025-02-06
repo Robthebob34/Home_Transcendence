@@ -19,9 +19,6 @@ User = get_user_model()
 @ensure_csrf_cookie
 @permission_classes([AllowAny])
 def register_view(request):
-    #logger.info(f"Received login request. Headers: {dict(request.headers)}")
-     #   username = request.data.get('username')
-      #  password = request.data.get('password')
     username = request.data.get('username')
     email = request.data.get('email')
     password = request.data.get('password')
