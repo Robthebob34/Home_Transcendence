@@ -39,7 +39,6 @@ def oauth_callback(request):
     code = request.GET.get("code")
     if not code:
         return Response({"error": "No authorization code provided"}, status=status.HTTP_400_BAD_REQUEST)
-
     data = {
         "grant_type": "authorization_code",
         "client_id": CLIENT_ID,
