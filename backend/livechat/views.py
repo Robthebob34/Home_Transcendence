@@ -8,6 +8,8 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth import get_user_model
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
+from livechat.models import ChatMessage, BlockedUser
+from django.db import models
 import logging
 
 # Create your views here.
@@ -95,14 +97,14 @@ def get_message(request):
 
     if not id_user_0 or not id_user_1:
         return Response({'error': 'id_user_0 and id_user_1 is required'}, status=status.HTTP_400_BAD_REQUEST)
-
     try:
-        user_sending = User.objects.get(id=id_user_1)
-    except User.DoesNotExist:
+        user_sending = get_object_or_404(User, id=id_user_0)
+    except Exception as e:
         return Response({'error': 'User sending message not found'}, status=status.HTTP_404_NOT_FOUND)
     try:
-        user_to_send = User.objects.get(id=id_user_0)
-    except User.DoesNotExist:
-        return Response({'error': 'User to send message not found'}, status=status.HTTP_404_NOT_FOUND)
+        user_to_send = get_object_or_404(User, id=id_user_1)
+    except Exception as e:
+        return Response({'error': 'User to send sending message not found'}, status=status.HTTP_404_NOT_FOUND)
+
     messages = ChatMessage.objects.filter(id_user_0=id_user_0, id_user_1=id_user_1) | ChatMessage.objects.filter(id_user_0=id_user_1, id_user_1=id_user_0)
     return Response({'messages': f'{messages}'}, status=status.HTTP_201_CREATED)
