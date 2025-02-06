@@ -20,11 +20,13 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
+import debug_toolbar
 
 def ping(request):
     return JsonResponse({'status': 'ok'})
 
 urlpatterns = [
+    path('__debug__/', include(debug_toolbar.urls)),
     path('admin/', admin.site.urls),
     path('api/users/', include('users.urls')),
     path('api/game/', include('game.urls')),
