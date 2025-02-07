@@ -25,3 +25,15 @@ class BlockedUser(models.Model):
     def __str__(self):
         return f"{self.id_user_0.username} a blocked {self.id_user_1.username}"
 
+
+class FriendUser(models.Model):
+    id_user_0 = models.ForeignKey(User, on_delete=models.CASCADE, related_name="iniator")
+    id_user_1 = models.ForeignKey(User, on_delete=models.CASCADE, related_name="friend")
+
+    blocked_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('id_user_0', 'id_user_1')
+
+    def __str__(self):
+        return f"{self.id_user_0.username} add {self.id_user_1.username} as a friend"
