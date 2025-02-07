@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pong Game</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Orbitron', sans-serif;
+            background-color: #000;
+            color: #fff;
+        }
+        .container {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px auto;
+            width: 90%;
+        }
+        .friends-container, .blocked-container, .chat-container, .added-container {
+            width: 30%;
+            padding: 20px;
+            border: 2px solid #00ff88;
+            border-radius: 5px;
+            background: rgba(0, 255, 136, 0.1);
+        }
+        .chat-container {
+            width: 30%;
+            padding: 20px;
+            border: 2px solid #00ff88;
+            border-radius: 5px;
+            background: rgba(0, 255, 136, 0.1);
+			margin-left: 34%;
+        }
+        .message-input {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .message-list {
+            margin-top: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            border: 1px solid #00ff88;
+            border-radius: 5px;
+            background: rgba(0, 255, 136, 0.2);
+        }
+        .message {
+            padding: 10px;
+            border-radius: 10px;
+            margin: 5px 0;
+            max-width: 60%;
+            word-wrap: break-word;
+        }
+        input, button {
+            padding: 10px;
+            border-radius: 5px;
+        }
+        button {
+            cursor: pointer;
+            background: #00ff88;
+            color: black;
+            border: none;
+        }
+        button:hover {
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+        .friend-item, .blocked-item {
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 5px;
+        }
+        .friend-item:hover, .blocked-item:hover {
+            background-color: rgba(0, 255, 136, 0.2);
+        }
+        .friend-options, .blocked-options {
+            display: none;
+            position: absolute;
+            background: black;
+            border: 1px solid #00ff88;
+            padding: 10px;
+            z-index: 10;
+            border-radius: 5px;
+        }
+        .friend-options button, .blocked-options button {
+            display: block;
+            width: 100%;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="friends-container">
+            <h2>My Friends</h2>
+            <ul id="friendsList"></ul>
+        </div>
+
+        <div class="added-container">
+            <h2>Add Friends</h2>
+            <ul id="addedList"></ul>
+			<button onclick="addFriend()">Add</button>
+			<input type="text" id="friendInput" placeholder="Type the name of a friend">
+        </div>
+        <div class="blocked-container">
+            <h2>Blocked</h2>
+            <ul id="blockedList"></ul>
+        </div>
+    </div>
+
+    <div class="chat-container">
+        <h2>Chat</h2>
+        <select id="friendSelect">
+            <option value="">Select a friend</option>
+        </select>
+        <div class="message-input">
+            <button onclick="sendMessage()">Send</button>
+            <input type="text" id="messageInput" placeholder="Type a message">
+        </div>
+        <h3>Messages</h3>
+        <div id="messageList" class="message-list"></div>
+    </div>
+
+    <div id="friendOptions" class="friend-options">
+        <button onclick="removeFriend()">Remove Friend</button>
+        <button onclick="blockFriend()">Block</button>
+    </div>
+
+    <div id="blockedOptions" class="blocked-options">
+        <button onclick="unblockUser()">Unblock</button>
+    </div>
+
+    <script>
+        let loggedInUserId = 0;
+        let selectedFriendId = null;
+        let selectedBlockedId = null;
+
+        async function fetchFriends() {
+            const response = await fetch(`/api/chat/get_friends/?id_user=${loggedInUserId}`);
+            const data = await response.json();
+            const friendsList = document.getElementById('friendsList');
+            const friendSelect = document.getElementById('friendSelect');
+            friendsList.innerHTML = '';
+            friendSelect.innerHTML = '<option value="">Select a friend</option>';
+            data.mutual_friends.forEach(friend => {
+                let friendItem = document.createElement('li');
+                friendItem.classList.add("friend-item");
+                friendItem.textContent = friend.username;
+                friendItem.dataset.id = friend.id;
+                friendItem.onclick = (event) => showFriendOptions(event, friend.id);
+                friendsList.appendChild(friendItem);
+                let option = document.createElement('option');
+                option.value = friend.id;
+                option.textContent = friend.username;
+                friendSelect.appendChild(option);
+            });
+        }
+
+        async function fetchBlockedUsers() {
+            const response = await fetch(`/api/chat/get_blocked/`);
+            const data = await response.json();
+            const blockedList = document.getElementById('blockedList');
+            blockedList.innerHTML = '';
+            data.blocked.forEach(user => {
+                let blockedItem = document.createElement('li');
+                blockedItem.classList.add("blocked-item");
+                blockedItem.textContent = user.username;
+                blockedItem.dataset.id = user.id;
+                blockedItem.onclick = (event) => showBlockedOptions(event, user.id);
+                blockedList.appendChild(blockedItem);
+            });
+        }
+
+        function showFriendOptions(event, friendId) {
+            selectedFriendId = friendId;
+            let menu = document.getElementById("friendOptions");
+            menu.style.display = "block";
+            menu.style.top = event.clientY + "px";
+            menu.style.left = event.clientX + "px";
+        }
+
+        function showBlockedOptions(event, blockedId) {
+            selectedBlockedId = blockedId;
+            let menu = document.getElementById("blockedOptions");
+            menu.style.display = "block";
+            menu.style.top = event.clientY + "px";
+            menu.style.left = event.clientX + "px";
+        }
+
+        async function removeFriend() {
+            if (!selectedFriendId) return;
+            await fetch('/api/chat/delete_friend_user/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                body: JSON.stringify({ id_user_0: loggedInUserId, id_user_1: selectedFriendId })
+            });
+            document.getElementById("friendOptions").style.display = "none";
+            fetchFriends();
+        }
+
+        async function blockFriend() {
+            if (!selectedFriendId) return;
+            await fetch('/api/chat/block_user/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                body: JSON.stringify({ id_user_0: loggedInUserId, id_user_1: selectedFriendId })
+            });
+            await fetch('/api/chat/delete_friend_user/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                body: JSON.stringify({ id_user_0: loggedInUserId, id_user_1: selectedFriendId })
+            });
+            document.getElementById("friendOptions").style.display = "none";
+            fetchFriends();
+            fetchBlockedUsers();
+        }
+
+		async function addFriend() {
+            const friendInput = document.getElementById('friendInput').value;
+			if (!friendInput) return alert('enter a name');
+            await fetch('/api/chat/add_friend_user/', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+                body: JSON.stringify({id_user_1: friendInput})
+            });
+			fetchFriends();
+		}
+
+        async function sendMessage() {
+            const friendId = document.getElementById('friendSelect').value;
+			fetchMessages(friendId);
+            const message = document.getElementById('messageInput').value;
+            if (!friendId || !message) return alert('Select a friend and enter a message');
+
+            await fetch('/api/chat/send_message/', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+                body: JSON.stringify({ id_user_0: loggedInUserId, id_user_1: friendId, message: message })
+            });
+
+            document.getElementById('messageInput').value = '';
+            fetchMessages(friendId);
+        }
+
+        async function fetchMessages(friendId) {
+            if (!friendId) return;
+            const response = await fetch(`/api/chat/get_message/?id_user_1=${friendId}`);
+            const data = await response.json();
+            const messageList = document.getElementById('messageList');
+            messageList.innerHTML = '';
+
+            data.messages.forEach(msg => {
+                const messageDiv = document.createElement('div');
+                messageDiv.classList.add('message');
+                messageDiv.classList.add(msg.sender === loggedInUserId ? 'sent' : 'received');
+                messageDiv.innerHTML = `<strong>${msg.sender}:</strong> ${msg.text}<br><span class='timestamp'>${msg.timestamp}</span>`;
+                messageList.appendChild(messageDiv);
+            });
+
+            messageList.scrollTop = messageList.scrollHeight;
+        }
+
+        async function unblockUser() {
+            if (!selectedBlockedId) return;
+            await fetch('/api/chat/delete_blocked_user/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                body: JSON.stringify({ id_user_1: selectedBlockedId })
+            });
+            document.getElementById("blockedOptions").style.display = "none";
+            fetchBlockedUsers();
+        }
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+		setInterval(() => {
+		//	fetchFriends();
+		//	fetchBlockedUsers();
+			let friendId = document.getElementById('friendSelect').value;
+			fetchMessages(friendId);
+		}, 200);
+        fetchFriends();
+        fetchBlockedUsers();
+    </script>
+</body>
+</html>
