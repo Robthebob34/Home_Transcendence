@@ -18,10 +18,10 @@ User = get_user_model()
 
 @api_view(['GET'])
 @ensure_csrf_cookie
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def test_view(request):
 
-    user_id = request.query_params.get('user_id')
+    user_id = request.user.id
 
     if not user_id:
         return Response({'detail': 'Please provide user_id'}, status=status.HTTP_400_BAD_REQUEST)
@@ -34,9 +34,9 @@ def test_view(request):
 
 @api_view(['POST'])
 @ensure_csrf_cookie
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def block_user(request):
-    id_user_0 = request.data.get('id_user_0')
+    id_user_0 = request.user.id
     id_user_1 = request.data.get('id_user_1')
 
     if not id_user_0 or not id_user_1:
@@ -62,9 +62,9 @@ def block_user(request):
 
 @api_view(['POST'])
 @ensure_csrf_cookie
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def add_friend_user(request):
-    id_user_0 = request.data.get('id_user_0')
+    id_user_0 = request.user.id
     id_user_1 = request.data.get('id_user_1')
 
     if not id_user_0 or not id_user_1:
@@ -96,9 +96,9 @@ def add_friend_user(request):
 
 @api_view(['POST'])
 @ensure_csrf_cookie
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def send_message(request):
-    id_user_0 = request.data.get('id_user_0')
+    id_user_0 = request.user.id
     id_user_1 = request.data.get('id_user_1')
     message = request.data.get('message')
 
@@ -133,36 +133,46 @@ def send_message(request):
 
 @api_view(['GET'])
 @ensure_csrf_cookie
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def get_message(request):
-    id_user_0 = request.query_params.get('id_user_0')
+    id_user_0 = request.user.id
     id_user_1 = request.query_params.get('id_user_1')
 
     if not id_user_0 or not id_user_1:
-        return Response({'error': 'id_user_0 and id_user_1 is required'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'id_user_0 and id_user_1 are required'}, status=status.HTTP_400_BAD_REQUEST)
     if id_user_0 == id_user_1:
         return Response({'error': 'id_user_0 and id_user_1 must be different'}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
         user_sending = get_object_or_404(User, id=id_user_0)
-    except Exception as e:
-        return Response({'error': 'User sending message not found'}, status=status.HTTP_404_NOT_FOUND)
-    try:
         user_to_send = get_object_or_404(User, id=id_user_1)
     except Exception as e:
-        return Response({'error': 'User to send sending message not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'One or both users not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    messages = ChatMessage.objects.filter(id_user_0=id_user_0, id_user_1=id_user_1) | ChatMessage.objects.filter(id_user_0=id_user_1, id_user_1=id_user_0)
-    var = ""
-    for message in messages:
-        var += f"{message.id} : {message.message} : {User.objects.get(id=message.id_user_0_id).username} -> {User.objects.get(id=message.id_user_1_id).username}, "
-    return Response({'messages': f'{var}'})
+    messages = ChatMessage.objects.filter(
+        Q(id_user_0=id_user_0, id_user_1=id_user_1) | Q(id_user_0=id_user_1, id_user_1=id_user_0)
+    ).order_by('created_at')
+
+    formatted_messages = [
+        {
+            "id": message.id,
+            "text": message.message,
+            "sender": message.id_user_0.username,
+            "receiver": message.id_user_1.username,
+            "timestamp": message.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        for message in messages
+    ]
+
+    return Response({"messages": formatted_messages}, status=status.HTTP_200_OK)
+
 
 
 @api_view(['POST'])
 @ensure_csrf_cookie
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def check_friendship(request):
-    id_user_0 = request.data.get('id_user_0')
+    id_user_0 = request.user.id
     id_user_1 = request.data.get('id_user_1')
 
     if not id_user_0 or not id_user_1:
@@ -192,9 +202,9 @@ def check_friendship(request):
 
 @api_view(['GET'])
 @ensure_csrf_cookie
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def get_friends(request):
-    id_user = request.query_params.get("id_user")
+    id_user = request.user.id
 
     if not id_user:
         return Response({'detail': 'Please provide user_id'}, status=status.HTTP_400_BAD_REQUEST)
@@ -214,13 +224,34 @@ def get_friends(request):
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+@api_view(['GET'])
+@ensure_csrf_cookie
+@permission_classes([IsAuthenticated])
+def get_blocked(request):
+    id_user = request.user.id
+
+    if not id_user:
+        return Response({'detail': 'Please provide user_id'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        user = get_object_or_404(User, id=id_user)
+
+        outgoing_friends = BlockedUser.objects.filter(id_user_0=user).values_list("id_user_1", flat=True)
+        mutual_friends_list = User.objects.filter(id__in=outgoing_friends).values("id", "username")
+
+        return Response({"blocked": list(mutual_friends_list)}, status=status.HTTP_200_OK)
+
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 @api_view(['POST'])
 @ensure_csrf_cookie
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def delete_friend_user(request):
-    id_user_0 = request.data.get('id_user_0')
+    id_user_0 = request.user.id
     id_user_1 = request.data.get('id_user_1')
 
     if not id_user_0 or not id_user_1:
@@ -244,9 +275,9 @@ def delete_friend_user(request):
 
 @api_view(['POST'])
 @ensure_csrf_cookie
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def delete_blocked_user(request):
-    id_user_0 = request.data.get('id_user_0')
+    id_user_0 = request.user.id
     id_user_1 = request.data.get('id_user_1')
 
     if not id_user_0 or not id_user_1:
