@@ -242,34 +242,40 @@ REST_FRAMEWORK = {
 }
 
 # Logging configuration
+
+# Logging configuration
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
-            'style': '{',
-        },
+        'game_format': {
+            'format': '[GAME] %(message)s'
+        }
     },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
+            'level': 'WARNING',
         },
+        'game_console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'game_format',
+            'level': 'WARNING',
+        }
     },
     'root': {
         'handlers': ['console'],
-        'level': 'DEBUG',
+        'level': 'WARNING',
     },
     'loggers': {
         'django': {
             'handlers': ['console'],
-            'level': 'DEBUG',
-            'propagate': True,
+            'level': 'WARNING',
+            'propagate': False,
         },
-        'django.db.backends': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
+        'game': {
+            'handlers': ['game_console'],
+            'level': 'WARNING',
             'propagate': False,
         },
     },

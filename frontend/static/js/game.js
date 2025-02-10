@@ -29,6 +29,11 @@ class PongGame {
         
         this.paddleSpeed = 25; // pixels to move per keypress
         
+        // Add a timestamp to limit logging frequency
+        this.lastLogTime = 0;
+        this.lastPaddleUpdate = 0;
+        this.paddleUpdateInterval = 16; // Update paddle every 16ms (approximately 60fps)
+        
         // Start initialization
         this.init().catch(error => {
             console.error('Failed to initialize game:', error);
@@ -262,7 +267,7 @@ class PongGame {
         this.joinGameBtn.addEventListener('click', () => this.joinGame());
         window.addEventListener('keydown', this.handleKeyPress);
         window.addEventListener('keyup', this.handleKeyUp);
-        
+
         console.log('Event listeners initialized');
     }
 
@@ -441,36 +446,33 @@ class PongGame {
     }
     
     handleWebSocketMessage(event) {
+        //console.log('handleWebSocketMessage called');
+        const message = JSON.parse(event.data);
+        //console.log('WebSocket message received:', message);
+        
         try {
-            const data = JSON.parse(event.data);
             // Only log non-game-state messages
-            if (data.type !== 'game_state_update') {
+            if (message.type !== 'game_state_update') {
                 console.log('Received WebSocket message:', event.data);
             }
             
-            switch (data.type) {
+            switch (message.type) {
                 case 'connection_established':
                     console.log('Connection established:', {
-                        playerId: data.user.id,
-                        username: data.user.username
+                        playerId: message.user.id,
+                        username: message.user.username
                     });
                     this.connected = true;
-                    this.playerId = data.user.id;
+                    this.playerId = message.user.id;
                     break;
 
                 case 'game_created':
-                    console.log('Game created, initializing game state:', data);
-                    this.gameId = data.game_id;
-                    this.gameState = data.game_state;
+                    console.log('Game created, initializing game state:', message);
+                    this.gameId = message.game_id;
+                    this.gameState = message.game_state;
                     this.isCreatingGame = false;
                     
-                    // Set player role for game creator
-                    this.playerRole = 'player1';
-                    this.gameState.player1_id = this.playerId;
-                    
-                    console.log('Set as player1 with ID:', this.playerId);
-                    
-                    // Show canvas and start animation
+                    // Wait for game_joined message to set player roles
                     if (this.canvasContainer) {
                         this.canvasContainer.style.display = 'block';
                     }
@@ -488,23 +490,23 @@ class PongGame {
                     break;
 
                 case 'game_joined':
-                    console.log('Game joined with data:', data);
-                    this.gameId = data.game_id;
-                    this.gameState = data.game_state;
+                    console.log('Game joined with data:', message);
+                    this.gameId = message.game_id;
+                    this.gameState = message.game_state;
                     
                     // Set player roles
-                    if (data.player1_id && data.player2_id) {
-                        if (this.playerId === data.player1_id) {
+                    if (message.player1_id && message.player2_id) {
+                        if (this.playerId === message.player1_id) {
                             this.playerRole = 'player1';
                             console.log('Set as player1 with ID:', this.playerId);
-                        } else if (this.playerId === data.player2_id) {
+                        } else if (this.playerId === message.player2_id) {
                             this.playerRole = 'player2';
                             console.log('Set as player2 with ID:', this.playerId);
                         }
                         
                         // Store player IDs in game state
-                        this.gameState.player1_id = data.player1_id;
-                        this.gameState.player2_id = data.player2_id;
+                        this.gameState.player1_id = message.player1_id;
+                        this.gameState.player2_id = message.player2_id;
                     }
                     
                     this.gameStarted = true;
@@ -523,58 +525,189 @@ class PongGame {
                     break;
 
                 case 'game_state_update':
-                    if (data.game_state) {
-                        console.log('Game state update:', {
-                            myPlayerId: this.playerId,
-                            player1_id: data.game_state.player1_id,
-                            player2_id: data.game_state.player2_id,
-                            player1_y: data.game_state.paddles.player1.y,
-                            player2_y: data.game_state.paddles.player2.y
+                    if (message.game_state) {
+                        console.log('Received game state update:', {
+                            currentState: this.gameState ? {
+                                player1Y: this.gameState.paddles.player1.y,
+                                player2Y: this.gameState.paddles.player2.y
+                            } : null,
+                            newState: {
+                                player1Y: message.game_state.paddles.player1.y,
+                                player2Y: message.game_state.paddles.player2.y
+                            }
                         });
-                        this.gameState = data.game_state;
+
+                        // Preserve player IDs when updating game state
+                        const player1_id = this.gameState?.player1_id;
+                        const player2_id = this.gameState?.player2_id;
+                        this.gameState = message.game_state;
+                        if (player1_id && player2_id) {
+                            this.gameState.player1_id = player1_id;
+                            this.gameState.player2_id = player2_id;
+                        }
                         
                         // Update scores if available
                         if (this.gameState.score) {
-                            if (this.player1Score) {
-                                this.player1Score.textContent = this.gameState.score.player1;
-                            }
-                            if (this.player2Score) {
-                                this.player2Score.textContent = this.gameState.score.player2;
-                            }
+                            if (this.player1Score) this.player1Score.textContent = this.gameState.score.player1;
+                            if (this.player2Score) this.player2Score.textContent = this.gameState.score.player2;
                         }
-                        
-                        // Make sure canvas is visible and animation is running
-                        if (this.canvasContainer) {
-                            this.canvasContainer.style.display = 'block';
-                        }
-                        
-                        // Start animation if not already running
-                        if (!this.animationFrameId) {
-                            console.log('Starting animation loop');
-                            this.animationFrameId = requestAnimationFrame(() => this.animate());
-                        }
+
+                        console.log('Game state updated:', {
+                            player1Y: this.gameState.paddles.player1.y,
+                            player2Y: this.gameState.paddles.player2.y
+                        });
                     }
                     break;
 
-                case 'game_over':
+                case 'game_end':
+                    console.log('Received game_end event:', message);
                     this.gameStarted = false;
                     if (this.animationFrameId) {
                         cancelAnimationFrame(this.animationFrameId);
                         this.animationFrameId = null;
                     }
+                    
+                    // Show game over message with winner and duration
                     if (this.gameStatus) {
-                        this.gameStatus.textContent = 'Game Over!';
+                        const winner = message.winner === 'player1' ? 'Player 1' : 'Player 2';
+                        const duration = message.duration_formatted;
+                        const score = `${message.final_score.player1} - ${message.final_score.player2}`;
+                        this.gameStatus.textContent = `Game Over! ${winner} wins! (${score}) Duration: ${duration}`;
+                        console.log('Updated game status with:', this.gameStatus.textContent);
                     }
+                    
+                    // Disable game controls
+                    if (this.createGameBtn) {
+                        this.createGameBtn.disabled = false;
+                        console.log('Re-enabled create game button');
+                    }
+                    if (this.joinGameBtn) {
+                        this.joinGameBtn.disabled = false;
+                        console.log('Re-enabled join game button');
+                    }
+                    this.handleGameEnd(message);
+                    break;
+
+                case 'game_over':
+                    console.log('Received deprecated game_over event');
                     break;
 
                 case 'error':
                     if (this.gameStatus) {
-                        this.gameStatus.textContent = `Error: ${data.message}`;
+                        this.gameStatus.textContent = `Error: ${message.message}`;
                     }
                     break;
             }
         } catch (error) {
             console.error('Error handling WebSocket message:', error);
+        }
+    }
+    
+    handleGameEnd(data) {
+        const winner = data.winner;
+        const duration = data.duration;
+        
+        // Stop the game loop
+        this.gameStarted = false;
+        
+        // Create game end overlay
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
+        overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        overlay.style.display = 'flex';
+        overlay.style.flexDirection = 'column';
+        overlay.style.justifyContent = 'center';
+        overlay.style.alignItems = 'center';
+        overlay.style.zIndex = '1000';
+        
+        // Create result text
+        const resultText = document.createElement('h1');
+        resultText.style.color = '#fff';
+        resultText.style.marginBottom = '20px';
+        resultText.style.fontSize = '2.5em';
+        resultText.innerText = `${winner === 'player1' ? 'Player 1' : 'Player 2'} Wins!`;
+        
+        // Create score text
+        const scoreText = document.createElement('h2');
+        scoreText.style.color = '#fff';
+        scoreText.style.marginBottom = '20px';
+        scoreText.style.fontSize = '1.8em';
+        scoreText.innerText = `Final Score: ${data.final_score.player1} - ${data.final_score.player2}`;
+        
+        // Create duration text
+        const durationText = document.createElement('h3');
+        durationText.style.color = '#fff';
+        durationText.style.marginBottom = '30px';
+        durationText.style.fontSize = '1.5em';
+        durationText.innerText = `Game Duration: ${duration}`;
+        
+        // Create buttons container
+        const buttonsContainer = document.createElement('div');
+        buttonsContainer.style.display = 'flex';
+        buttonsContainer.style.gap = '20px';
+        
+        // Create "Create New Game" button
+        const createButton = document.createElement('button');
+        createButton.innerText = 'Create New Game';
+        createButton.style.padding = '15px 30px';
+        createButton.style.fontSize = '1.2em';
+        createButton.style.cursor = 'pointer';
+        createButton.style.backgroundColor = '#4CAF50';
+        createButton.style.color = 'white';
+        createButton.style.border = 'none';
+        createButton.style.borderRadius = '5px';
+        createButton.onclick = () => {
+            // Clean up WebSocket before navigating
+            if (this.gameSocket) {
+                this.gameSocket.onclose = null; // Remove onclose handler
+                this.gameSocket.close();
+                this.gameSocket = null;
+            }
+            window.location.href = '/game/';  
+        };
+        
+        // Create "Join Game" button
+        const joinButton = document.createElement('button');
+        joinButton.innerText = 'Join Game';
+        joinButton.style.padding = '15px 30px';
+        joinButton.style.fontSize = '1.2em';
+        joinButton.style.cursor = 'pointer';
+        joinButton.style.backgroundColor = '#2196F3';
+        joinButton.style.color = 'white';
+        joinButton.style.border = 'none';
+        joinButton.style.borderRadius = '5px';
+        joinButton.onclick = () => {
+            // Clean up WebSocket before navigating
+            if (this.gameSocket) {
+                this.gameSocket.onclose = null; // Remove onclose handler
+                this.gameSocket.close();
+                this.gameSocket = null;
+            }
+            window.location.href = '/game/join/';  
+        };
+        
+        // Add buttons to container
+        buttonsContainer.appendChild(createButton);
+        buttonsContainer.appendChild(joinButton);
+        
+        // Add elements to overlay
+        overlay.appendChild(resultText);
+        overlay.appendChild(scoreText);
+        overlay.appendChild(durationText);
+        overlay.appendChild(buttonsContainer);
+        
+        // Add overlay to body
+        document.body.appendChild(overlay);
+        
+        // Clean up WebSocket connection
+        if (this.gameSocket) {
+            this.gameSocket.onclose = null; // Remove onclose handler to prevent reconnection
+            this.gameSocket.close();
+            this.gameSocket = null;
         }
     }
     
@@ -622,8 +755,14 @@ class PongGame {
     }
 
     handleKeyPress(event) {
+        console.log('handleKeyPress called');
         if (!this.gameSocket || this.gameSocket.readyState !== WebSocket.OPEN || !this.gameId || !this.gameStarted || !this.gameState) {
-
+            console.log('Cannot handle key press:', {
+                hasSocket: !!this.gameSocket,
+                socketState: this.gameSocket?.readyState,
+                gameId: this.gameId,
+                gameStarted: this.gameStarted
+            });
             return;
         }
         
@@ -636,8 +775,6 @@ class PongGame {
             const paddle = this.gameState.paddles[paddleKey];
             const canvasHeight = this.gameState.canvas.height;
             
-
-            
             // Move paddle based on key
             let direction = null;
             if (key === 'w' && paddle.y > 0) {
@@ -647,15 +784,18 @@ class PongGame {
             }
             
             if (direction) {
+                console.log('Sending paddle_move:', { direction, gameId: this.gameId });
                 this.gameSocket.send(JSON.stringify({
                     type: 'paddle_move',
-                    direction: direction
+                    direction: direction,
+                    game_id: this.gameId
                 }));
             }
         }
     }
     
     updatePaddlePosition() {
+        console.log('updatePaddlePosition called');
         if (!this.gameSocket || this.gameSocket.readyState !== WebSocket.OPEN || !this.gameId || !this.gameStarted || !this.gameState) {
             console.log('Cannot update paddle: socket:', !!this.gameSocket, 'state:', this.gameSocket?.readyState, 'gameId:', this.gameId, 'started:', this.gameStarted);
             return;
@@ -697,9 +837,7 @@ class PongGame {
         }
 
         // Update paddle position based on key state
-        if (this.keyState.w || this.keyState.s) {
-            this.updatePaddlePosition();
-        }
+        this.updatePaddlePosition();
 
         // Draw the current game state
         this.draw();
@@ -710,6 +848,7 @@ class PongGame {
     
     
     draw() {
+        //console.log('draw called');
         try {
             if (!this.ctx || !this.gameState) {
                 console.log('Cannot draw, missing context or game state:', {
@@ -719,7 +858,7 @@ class PongGame {
                 return;
             }
             
-            console.log('Drawing game state:', this.gameState);
+            //console.log('Drawing game state:', this.gameState);
             
             const { canvas, ball, paddles } = this.gameState;
             
@@ -808,6 +947,16 @@ class PongGame {
                 this.animationFrameId = null;
             }
         }
+        
+        // Add a timestamp to limit logging frequency
+        const logInterval = 2000; // Log every 500ms
+        const currentTime = Date.now();
+        if (currentTime - this.lastLogTime > logInterval) {
+            console.log('Paddle positions:', this.gameState.paddles);
+            //console.log('Key state:', this.keyState);
+            //console.log('Game state:', this.gameState);
+            this.lastLogTime = currentTime;
+        }
     }
 
     
@@ -865,12 +1014,113 @@ class PongGame {
     }
 
     handleGameOver(data) {
-        const winner = data.winner === this.playerId ? 'You won!' : 'You lost!';
-        alert(`Game Over! ${winner}`);
-        document.querySelector('.canvas-container').style.display = 'none';
-        document.querySelector('.game-buttons').style.display = 'block';
+        const winner = data.winner;
+        const duration = data.duration;
+        
+        // Stop the game loop
+        this.gameStarted = false;
+        
+        // Create game end overlay
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
+        overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        overlay.style.display = 'flex';
+        overlay.style.flexDirection = 'column';
+        overlay.style.justifyContent = 'center';
+        overlay.style.alignItems = 'center';
+        overlay.style.zIndex = '1000';
+        
+        // Create result text
+        const resultText = document.createElement('h1');
+        resultText.style.color = '#fff';
+        resultText.style.marginBottom = '20px';
+        resultText.style.fontSize = '2.5em';
+        resultText.innerText = `${winner === 'player1' ? 'Player 1' : 'Player 2'} Wins!`;
+        
+        // Create score text
+        const scoreText = document.createElement('h2');
+        scoreText.style.color = '#fff';
+        scoreText.style.marginBottom = '20px';
+        scoreText.style.fontSize = '1.8em';
+        scoreText.innerText = `Final Score: ${data.final_score.player1} - ${data.final_score.player2}`;
+        
+        // Create duration text
+        const durationText = document.createElement('h3');
+        durationText.style.color = '#fff';
+        durationText.style.marginBottom = '30px';
+        durationText.style.fontSize = '1.5em';
+        durationText.innerText = `Game Duration: ${duration}`;
+        
+        // Create buttons container
+        const buttonsContainer = document.createElement('div');
+        buttonsContainer.style.display = 'flex';
+        buttonsContainer.style.gap = '20px';
+        
+        // Create "Create New Game" button
+        const createButton = document.createElement('button');
+        createButton.innerText = 'Create New Game';
+        createButton.style.padding = '15px 30px';
+        createButton.style.fontSize = '1.2em';
+        createButton.style.cursor = 'pointer';
+        createButton.style.backgroundColor = '#4CAF50';
+        createButton.style.color = 'white';
+        createButton.style.border = 'none';
+        createButton.style.borderRadius = '5px';
+        createButton.onclick = () => {
+            // Clean up WebSocket before navigating
+            if (this.gameSocket) {
+                this.gameSocket.onclose = null; // Remove onclose handler
+                this.gameSocket.close();
+                this.gameSocket = null;
+            }
+            window.location.href = '/game/';  
+        };
+        
+        // Create "Join Game" button
+        const joinButton = document.createElement('button');
+        joinButton.innerText = 'Join Game';
+        joinButton.style.padding = '15px 30px';
+        joinButton.style.fontSize = '1.2em';
+        joinButton.style.cursor = 'pointer';
+        joinButton.style.backgroundColor = '#2196F3';
+        joinButton.style.color = 'white';
+        joinButton.style.border = 'none';
+        joinButton.style.borderRadius = '5px';
+        joinButton.onclick = () => {
+            // Clean up WebSocket before navigating
+            if (this.gameSocket) {
+                this.gameSocket.onclose = null; // Remove onclose handler
+                this.gameSocket.close();
+                this.gameSocket = null;
+            }
+            window.location.href = '/game/join/';  
+        };
+        
+        // Add buttons to container
+        buttonsContainer.appendChild(createButton);
+        buttonsContainer.appendChild(joinButton);
+        
+        // Add elements to overlay
+        overlay.appendChild(resultText);
+        overlay.appendChild(scoreText);
+        overlay.appendChild(durationText);
+        overlay.appendChild(buttonsContainer);
+        
+        // Add overlay to body
+        document.body.appendChild(overlay);
+        
+        // Clean up WebSocket connection
+        if (this.gameSocket) {
+            this.gameSocket.onclose = null; // Remove onclose handler to prevent reconnection
+            this.gameSocket.close();
+            this.gameSocket = null;
+        }
     }
-};  // Added semicolon here
+};  
 
 // Initialize game when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
