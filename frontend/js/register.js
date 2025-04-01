@@ -20,20 +20,23 @@ function initRegister(){
     });
     document.getElementById('register_submit').addEventListener('click', async function(event) {
 		async function checkUserAuth() {
-			// const isAuthenticated = await checkAuth();
-			// console.log("Is user auth? " + isAuthenticated);
-		
-			// if (isAuthenticated) {
-			// 	console.log("Already logged-in");
-			// 	return;
-			// }
 			const username = document.getElementById('register_username').value.trim();
 			const email = document.getElementById('register_email').value;
 			const password = document.getElementById('register_password').value;
 			const confirm_password = document.getElementById('register_confirm_password').value;
 			
+			if (!username || !password || !email) {
+                showError(getTranslation("register_enterboth"));
+                return;
+            }
+			if(isRegexUsername(username, 1) == 0)
+                return;
+			if(isRegexEmail(email, 1) == 0)
+				return;
+			if(isRegexPassword(password, 1) == 0)
+                return;
 			if (password !== confirm_password) {
-				showError('Passwords do not match.');
+				showError(getTranslation("register_password_notmatch"));
 				return;
 			}
 	

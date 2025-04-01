@@ -25,6 +25,10 @@
 		"profile_match_won" : "Victoires",
 		"profile_match_lost" : "Défaites",
 		"profile_match_history" : "Historique des matchs",
+		"profile_tablematch_winloss": "Victoires / Défaites",
+		"profile_tablematch_score": "Points",
+		"profile_tablematch_playedagainst": "Joueur affronté",
+		"profile_tablematch_time": "Durée",
 
 		"chat_dropdownMenuButton_Profile": "Accéder au profil",
 		"chat_dropdownMenuButton_PlayPong": "Affrontrer au PONG!",
@@ -39,6 +43,7 @@
 
 		"game_creategame" : "Créer une Partie",
 		"game_joingame" : "Rejoindre une Partie",
+		"game_joingame2": "Rejoindre une Partie",
 		"game_createtournement" : "Créer un Tournoi",
 		"game_jointournement" : "Rejoindre un Tournoi",
 		"game_showtournement" : "Afficher les Tournois",
@@ -53,6 +58,9 @@
 		"cancelJoinTournament" : "Annuler",
 		"game_available_tournament_title" : "Tournois en cours",
 		"game_available_tournament_title_2" : "Tournois en cours",
+		"confirmJoinGame" : "Rejoindre",
+		"cancelJoinGame" : "Annuler",
+		"gameIdInput": "ID de la partie",
 
 		"tournamentStart" : "Lancer le Tournoi!",
 		"GoToGame" : "Voir la partie",
@@ -60,6 +68,19 @@
 		"tournament_games" : "Parties",
 		"tournament_players" : "Joueurs",
 		"tournamentNotFound" : "Tournoi inconnu!",
+
+		"register_submit": "S'enregistrer",
+		"register_42log": "S'enregistrer via 42",
+		"register_tologin": "Vous avez déjà un compte? Connectez vous ici",
+		"fregister_username": "Nom d'utilisateur",
+		"fregister_password": "Mot de passe",
+		"register_passwordconfirm": "Confirmez le mot de passe",
+
+		"flogin_username": "Nom d'utilisateur",
+		"flogin_password": "Mot de passe",
+		"login_submit": "Connection",
+		"login_42log": "Connection via 42",
+		"login_toregister": "Pas encore de compte? Enregistrez vous ici",
 
 		"header_profilebutton": "Profil",
 		"header_settingsbutton": "Paramètres",
@@ -92,6 +113,10 @@
 		"profile_match_won" : "Victories",
 		"profile_match_lost" : "Defeats",
 		"profile_match_history" : "Match history",
+		"profile_tablematch_winloss": "Win / Loss",
+		"profile_tablematch_score": "Score",
+		"profile_tablematch_playedagainst": "Played against",
+		"profile_tablematch_time": "Time",
 
 		"chat_dropdownMenuButton_Profile": "Check profile",
 		"chat_dropdownMenuButton_PlayPong": "Ask for a PONG!",
@@ -106,6 +131,7 @@
 
 		"game_creategame" : "Create a Game",
 		"game_joingame" : "Join a Game",
+		"game_joingame2": "Join a Game",
 		"game_createtournement" : "Create a Tournament",
 		"game_jointournement" : "Join a Tournament",
 		"game_showtournement" : "Show Tournaments",
@@ -120,6 +146,9 @@
 		"cancelJoinTournament" : "Cancel",
 		"game_available_tournament_title" : "Available Tournaments",
 		"game_available_tournament_title_2" : "Available Tournaments",
+		"confirmJoinGame" : "Join",
+		"cancelJoinGame" : "Cancel",
+		"gameIdInput": "Game ID",
 
 		"tournamentStart" : "Start Tournament!",
 		"GoToGame" : "Play",
@@ -128,7 +157,18 @@
 		"tournament_players" : "Players",
 		"tournamentNotFound" : "Tournament not found!",
 
-		"friends_addfriends": "Add friend",
+		"register_submit": "Register",
+		"register_42log": "Register using 42",
+		"register_tologin": "Already have an account? Login here",
+		"fregister_username": "Username",
+		"fregister_password": "Password",
+		"register_passwordconfirm": "Confirm password",
+
+		"flogin_username": "Username",
+		"flogin_password": "Password",
+		"login_submit": "Login",
+		"login_42log": "Login using 42",
+		"login_toregister": "Don't have an account? Register here",
 
 		"header_profilebutton": "Profile",
 		"header_settingsbutton": "Settings",

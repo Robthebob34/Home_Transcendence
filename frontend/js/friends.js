@@ -14,6 +14,8 @@ function initFriends(){
 
 async function addFriend() {
 	const friendInput = document.getElementById('friendInput').value;
+    if(isRegexUsername(friendInput) == 0)
+        return;
 	if (!friendInput) return showNotification(getTranslation("friends_enterusername"), "error");
 	const response = await fetch('/api/chat/add_friend_username/', {
 		method: 'POST',

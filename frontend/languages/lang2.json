@@ -6,6 +6,9 @@
 		"global_tournament" : "Tournoi",
 		"global_notready" : "Pas prêt",
 		"global_ready" : "Prêt!",
+		"global_regexusername": "Nom d'utilisateur mal formaté.",
+		"global_regexemail": "Email mal formaté.",
+		"global_regexpassw": "Le mot de passe doit contenir au moins 6 characteres dont:\n1 Majuscule\n1 Minuscule\n1 Chiffre\n1 Charactere special",
 
         "profile_block_manage_block": "Bloquer",
 		"profile_block_manage_unblock": "Débloquer",
@@ -64,6 +67,11 @@
 		"friends_asked": "Demande d'ami envoyée!",
 		"friends_already_friend": " est déja votre ami ou une demande lui à déjà été envoyée.",
 
+		"login_enterboth": "Veuillez insérer un nom d'utilisateur ET un mot de passe.",
+
+		"register_enterboth": "Veuillez insérer un nom d'utilisateur, une addresse mail, ainsi qu'un mot de passe",
+		"register_password_notmatch": "Les mots de pass ne correspondent pas.",
+
 		"settings_unblock_button": "Débloquer ",
 		"settings_select_png": "Veuillez sélectionner un fichier JPEG ou PNG !",
 		"settings_avatar_upload_success": "Votre avatar a été mis à jour!",
@@ -80,6 +88,10 @@
 		"global_tournament" : "Tournament",
 		"global_notready" : "Not Ready",
 		"global_ready" : "Ready!",
+		"global_regexusername": "Username format is incorrect.",
+		"global_regexemail": "Email format is incorrect.",
+		"global_regexpassw": "Password must contain at least 6 characters long including:\n1 Uppercase\n1 Lowercase\n1 Numeric\n1 Special character",
+
 
         "profile_block_manage_block": "Block",
 		"profile_block_manage_unblock": "Unblock",
@@ -137,6 +149,11 @@
 		"friends_notfound": "User not found.",
 		"friends_asked": "Friend request sent!",
 		"friends_already_friend": " is already your friend or a request as already been sent to him.",
+
+		"login_enterboth": "Please enter both username AND password",
+
+		"register_enterboth": "Please enter a username, an email and a password",
+		"register_password_notmatch": "Passwords do not match.",
 
 		"settings_unblock_button": "Unblock ",
 		"settings_select_png": "Please only select a JPEG or PNG file.",

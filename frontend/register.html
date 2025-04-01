@@ -5,7 +5,7 @@
         <div class="login_error-message" id="register_errorMessage"></div>
         <div id="login_form">
             <div class="login_form-group">
-                <label for="username">Username</label>
+                <label id="fregister_username" for="username"></label>
                 <input type="text"  class="login_form-control" id="register_username" name="username" required>
             </div>
             <div class="login_form-group">
@@ -13,16 +13,16 @@
                 <input type="email"  class="login_form-control" id="register_email" name="email" required>
             </div>
             <div class="login_form-group">
-                <label for="password">Password</label>
+                <label id="fregister_password" for="password"></label>
                 <input type="password"  class="login_form-control" id="register_password" name="password" required>
             </div>
             <div class="login_form-group">
-                <label for="password">Confirm Password</label>
+                <label id="register_passwordconfirm" for="password"></label>
                 <input type="password"  class="login_form-control" id="register_confirm_password" name="confirm_password" required>
             </div>
-            <button id="register_submit" class="login_btn btn-outline-success">Register</button>
-            <button id="register_42log" class="login_btn btn-outline-success">Register using 42</button>
-            <a href="#login" class="login_register-link">Already have an account? Login here</a>
+            <button id="register_submit" class="login_btn btn-outline-success"></button>
+            <button id="register_42log" class="login_btn btn-outline-success"></button>
+            <a href="#login" class="login_register-link" id="register_tologin"></a>
         </div>
     </div>
 </div>  

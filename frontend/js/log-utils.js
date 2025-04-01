@@ -61,3 +61,45 @@ function isAuthenticated(){
 	});
     return 0;
 }
+
+function isRegexUsername(value, showErr) {
+    var regex = /^[a-zA-Z0-9_]+$/;
+
+    if (regex.test(value)) {
+        return 1;
+    } else {
+        if(showErr == 1)
+            showError(getTranslation("global_regexusername"));
+        else
+            showNotification(getTranslation("global_regexusername"), "error");
+        return 0;
+    }
+}
+
+function isRegexEmail(value, showErr) {
+    var regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (regex.test(value)) {
+        return 1;
+    } else {
+        if(showErr == 1)
+            showError(getTranslation("global_regexemail"));
+        else
+            showNotification(getTranslation("global_regexemail"), "error");
+        return 0;
+    }
+}
+
+function isRegexPassword(value, showErr) {
+    var regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{6,}$/;
+
+    if (regex.test(value)) {
+        return 1;
+    } else {
+        if(showErr == 1)
+            showError(getTranslation("global_regexpassw"));
+        else
+            showNotification(getTranslation("global_regexpassw"), "error");
+        return 0;
+    }
+}

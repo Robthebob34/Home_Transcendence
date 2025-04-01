@@ -44,14 +44,6 @@ function initLogin(){
     });
     document.getElementById('login_submit').addEventListener('click', async function(event) {
         async function checkUserAuth() {
-            // const isAuthenticated = await checkAuth();
-            // console.log("Is user auth? " + isAuthenticated);
-        
-            // if (isAuthenticated) {
-            //     window.location.href = "#game";
-            //     console.log("Already logged-in -> redirecting to game page.")
-            //     return;
-            // }
             var username = document.getElementById("login_username");
             if(username != null)
                 username = username.value;
@@ -60,9 +52,11 @@ function initLogin(){
                 password = password.value;
     
             if (!username || !password) {
-                showError('Please enter both username and password');
+                showError(getTranslation("login_enterboth"));
                 return;
             }
+            if(isRegexUsername(username, 1) == 0)
+                return;
     
             try {
                 console.log('Fetching CSRF token...');

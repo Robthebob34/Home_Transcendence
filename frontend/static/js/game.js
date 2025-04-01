@@ -1208,7 +1208,7 @@ class PongGame {
             if (this.playerId == data.winner_id && globTournament.status != "completed")
                 homeButton.innerText = 'Go to Tournament';
             else
-                homeButton.innerText = 'Go back to Loby';
+                homeButton.innerText = 'Go back to Lobby';
 
             homeButton.style.backgroundColor = '#2196F3'; // Blue for tournament
             homeButton.onclick = () => {
